@@ -1,0 +1,12 @@
+# Development & Scratch
+scratch/
+__pycache__/
+*.pyc
+
+# Local OS Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log

@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="個人跑步數據解析與 VDOT 心率分析器 - 整合 Garmin 紀錄、VDOT 跑力運算與心率區間監控">
+  <title>Runner Analytics | VDOT & 跑步心率數據分析系統</title>
+  
+  <!-- Google Fonts: Inter & Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  
+  <!-- Chart.js v4 via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  
+  <!-- CSS Stylesheets -->
+  <link rel="stylesheet" href="css/index.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+</head>
+<body class="theme-dark">
+  <div id="app" class="app-layout">
+    <!-- Sidebar Navigation -->
+    <aside class="app-sidebar" id="appSidebar">
+      <div class="sidebar-brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path>
+            <line x1="4" y1="22" x2="4" y2="15"></line>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-title">RUNNER PULSE</span>
+          <span class="brand-subtitle">VDOT & HR Analytics</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button class="nav-item active" data-view="dashboard" id="navDashboard">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+          <span>儀表板首頁</span>
+        </button>
+        <button class="nav-item" data-view="training-logs" id="navLogs">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+          <span>訓練日誌清單</span>
+        </button>
+        <button class="nav-item" data-view="vdot-analysis" id="navVdot">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+          <span>VDOT 跑力趨勢</span>
+        </button>
+        <button class="nav-item" data-view="hr-zones" id="navZones">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
+          <span>心率區間分析</span>
+        </button>
+        <button class="nav-item" data-view="schedule" id="navSchedule">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+          <span>訓練課表追蹤</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="athlete-card">
+          <div class="athlete-avatar">🏃</div>
+          <div class="athlete-info">
+            <div class="athlete-name">Tobby Runner</div>
+            <div class="athlete-meta">VDOT: <strong id="sidebarVdotBadge">36.0</strong> | LTHR: 172</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Mobile Sidebar Backdrop Overlay -->
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+    <!-- Main Content Area -->
+    <div class="app-main">
+      <!-- Top Header Bar -->
+      <header class="app-header">
+        <div class="header-left">
+          <button class="btn-sidebar-toggle" id="btnSidebarToggle" aria-label="Toggle Sidebar">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+          </button>
+          <div class="page-breadcrumb">
+            <span class="text-muted">跑步分析系統</span>
+            <span class="separator">/</span>
+            <span class="active-page-title" id="pageTitle">系統儀表板</span>
+          </div>
+        </div>
+
+        <div class="header-right">
+          <!-- Data Source Status Chip -->
+          <div class="status-chip" id="dataSourceStatus">
+            <span class="status-dot status-loading"></span>
+            <span class="status-label">正在初始化...</span>
+          </div>
+
+          <!-- Refresh Data Button -->
+          <button class="btn btn-secondary btn-sm" id="btnRefreshData" title="重新整理 Google Sheets 資料">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            <span>重新整理</span>
+          </button>
+
+          <!-- Toggle Theme or External Spec link -->
+          <a href="https://docs.google.com/spreadsheets/d/1DahiYbLvl4zR6-5EABCSwTATCtkP7N3IywSxWo5JKas/" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" title="開啟來源 Google 試算表">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+            <span>Google Sheet</span>
+          </a>
+        </div>
+      </header>
+
+      <!-- Alert / Banner Area -->
+      <div id="systemAlertContainer" class="system-alert-container"></div>
+
+      <!-- Dynamic Page Container -->
+      <main class="page-content" id="pageContent">
+        <!-- Default Loading State -->
+        <div class="content-loader-wrapper" id="contentLoader">
+          <div class="spinner-pulse"></div>
+          <div class="loading-text">載入跑步訓練分析資料中...</div>
+          <div class="loading-subtext">Google Sheets: 訓練日誌、心率區間、課表</div>
+        </div>
+      </main>
+
+      <!-- Footer -->
+      <footer class="app-footer">
+        <div class="footer-meta">
+          <span>Runner Pulse Analytics v1.0.0</span>
+          <span>&bull;</span>
+          <span>基準: 2026/03/14 5K 測驗 (VDOT 36)</span>
+          <span>&bull;</span>
+          <span>目標: 2026/10/24 VDOT 測驗</span>
+        </div>
+        <div class="footer-links">
+          <span>規格依據: <a href="running_analyzer_spec.md" target="_blank">running_analyzer_spec.md</a></span>
+        </div>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Lap Splits Modal Container (Task T-06 UI 互動彈窗) -->
+  <div class="modal-backdrop" id="lapSplitsModal" aria-hidden="true">
+    <div class="modal-container" role="dialog" aria-modal="true" aria-labelledby="modalActivityTitle">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title" id="modalActivityTitle">每公里分段解析 (Lap Splits)</h3>
+          <div class="text-muted" id="modalActivityMeta" style="font-size: 0.82rem; margin-top: 0.2rem;"></div>
+        </div>
+        <button class="btn btn-ghost btn-sm btn-icon" id="btnCloseModal" aria-label="關閉彈窗">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div class="modal-body" id="modalSplitsContent">
+        <!-- 動態渲染分段列表與配速折線/條狀分佈 -->
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" id="btnModalCloseAction">關閉</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- App Main Entry Point (ES Module) -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

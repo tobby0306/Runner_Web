@@ -1,11 +1,12 @@
 # Runner Pulse Analytics — 系統架構、功能規格與邏輯開發手冊
-> **文件版本**：v2.0 (正式交付版)  
+> **文件版本**：v2.2 (雲端發布對接與功能增強擴充版)  
 > **編寫角色**：Technical PM (`@01_role_pm.md`) + Senior SA (`@02_role_sa.md`) + Principal Architect (`@03_role_architect.md`)  
 > **適用對象**：全端工程師、系統分析師、跑者用戶、維運與未來迭代團隊  
 > **線上站點**：
 > - GitHub Pages: [https://tobby0306.github.io/Runner_Web/](https://tobby0306.github.io/Runner_Web/)  
 > - Netlify: [https://tobby-runner-web.netlify.app](https://tobby-runner-web.netlify.app)  
-> **資料來源**：[Google 試算表 - 訓練日誌](https://docs.google.com/spreadsheets/d/1DahiYbLvl4zR6-5EABCSwTATCtkP7N3IywSxWo5JKas/)
+> **資料來源**：[Google 試算表 - 訓練日誌](https://docs.google.com/spreadsheets/d/1DahiYbLvl4zR6-5EABCSwTATCtkP7N3IywSxWo5JKas/)  
+> **公開發布識別碼 (CORS)**：`2PACX-1vRWTBzIVn5aVBDYHIzmkBbI0E-Vok36PDANTne_S8U00vpPZCx6kDEzBq0iWLgZ2VIDg5Y20CgsCOod`
 
 ---
 
@@ -19,12 +20,14 @@
 2. **心率強度監控不易**：難以即時評估是否遵守「80/20 有氧法則」（低強度 80% vs 質量課 20%）。
 3. **課表執行成效難以對比**：計畫里程與實際 Garmin 匯入數據分開，難以掌握課表完成率。
 4. **跨裝置使用困難**：在操場練跑後用手機查閱試算表體驗極差，需要支援手機窄螢幕操作的 Web App。
+5. **瀏覽器跨來源 (CORS) 阻擋**：靜態網頁直接存取 Google 試算表 `/export` 端點受限於同源政策，需透過官方發布端點與多通道降級保證高可用性。
 
 ### 1.2 核心價值與架構定位
 - **零後端伺服器負擔 (Serverless SPA)**：純原生 ES6+ JavaScript 模組化架構，不依賴龐大框架，秒級極速載入。
 - **即時試算表雙向聯動**：直接以 CSV 直連或本機代理拉取 Google Sheets，試算表一更新，首頁與課表立即連動。
 - **專業級 Jack Daniels 跑力體系**：內建 Daniels Running Formula 耗氧量與 %VO2max 數學模型，自動反推全馬力與各配速區間。
 - **極致 RWD 手機優化**：手機抽屜導覽選單、防爆版水平滑動表格、觸控友善圖表與彈窗。
+- **全方位平滑降級與自我修復**：五重 Google Sheets 連線管線，遭遇斷網或 CORS 阻擋時秒級自動啟用高擬真模擬資料備援。
 
 ### 1.3 技術棧矩陣 (Technology Stack)
 | 領域 | 技術選型 | 選擇理由 |
@@ -35,6 +38,32 @@
 | **資料儲存/快取** | LocalStorage + MemoryCache (TTL 1h) | 離線優先、大幅減少對 Google Sheets 的 API 請求，防請求超流 |
 | **雲端靜態部署** | GitHub Pages + Netlify (CI/CD) | 免費全球 CDN、自動化 Git Push 觸發持續部署、HTTPS 憑證保護 |
 
+### 1.4 專案里程碑與任務拆解清單 (WBS & Task Breakdown)
+依據 `@01_role_pm.md` 技術專案經理規範，拆解基線任務 (Baseline) 與擴充功能任務 (Extensions)：
+
+| Task ID | 任務名稱 | 負責角色 | 優先級 | 依賴任務 | 交付物定義 (DoD) |
+|---|---|---|---|---|---|
+| **T-01** | 專案初始化與設計系統規範建立 | FE / UX | P0 | 無 | 建立 CSS 變數、版型結構與色彩常數 |
+| **T-02** | Google Sheets 批次同步與三層快取降級 | BE / SA | P0 | T-01 | 完成 3 頁籤平行拉取與 LocalStorage 快取 |
+| **T-03** | 訓練日誌 CSV 解析與分段正規化 | SA / BE | P0 | T-02 | 正則萃取每公里分段、時間間歇與 7 大訓練分類 |
+| **T-04** | 主控路由與導覽切換架構 | FE | P0 | T-01 | 完成 SPA 單頁視圖無刷新切換 |
+| **T-05** | 系統儀表板核心 KPI 與跑量統計 | FE / SA | P0 | T-03 | 呈現年度里程、平均心率、步頻與倒數卡片 |
+| **T-06** | 訓練日誌清單多維度篩選與標籤呈現 | FE | P1 | T-03 | 完成日期/名稱/強度多維過濾器 |
+| **T-07** | Jack Daniels VDOT 跑力計算引擎 | SA / FE | P0 | T-03 | 實現 Daniels 公式與 5K/10K/半馬/全馬成績預測 |
+| **T-08** | VDOT 歷史跑力演進折線圖表 | FE | P1 | T-07 | Chart.js 繪製跑力爬升曲線 |
+| **T-09** | 5 大心率區間對照與月度分佈圖表 | FE / SA | P1 | T-03 | 實現 %LTHR 區間分佈堆疊圖與雙月圓餅圖 |
+| **T-10** | 80/20 有氧法則聚合與週跑量長條圖 | FE / SA | P1 | T-03 | 計算 80/20 有氧比例與 4/8/12 週滾動聚合 |
+| **T-11** | 每公里分段明細彈窗與配速/心率雙軸圖 | FE / UX | P1 | T-03 | 點擊卡片彈出雙軸折線圖與 Delta 配速差明細 |
+| **T-12** | 訓練課表追蹤與進度條完成率比對 | FE / SA | P1 | T-03 | 動態關聯活動完成里程與計畫里程 |
+| **T-13** | 即時重新整理與全域狀態指示燈 | FE | P2 | T-02 | 狀態指示燈顯示 LIVE / CACHED / MOCK |
+| **T-14** | 極致響應式 (RWD) 佈局與手機端優化 | UX / FE | P0 | 全任務 | 手機抽屜選單、防爆版表格與觸控手勢相容 |
+| **T-15** | 無伺服器 CI/CD 部署與自動化發布 | BE | P0 | 全任務 | GitHub Pages 與 Netlify 全自動部署 |
+| **T-EXT-01** | 跑者生理基準自訂彈窗與全站動態區間連動 | FE / SA | P0 | T-09 | 支援自訂 VDOT/LTHR/MaxHR，全站即時重繪 |
+| **T-EXT-02** | 日誌總表 RPE / TRIMP 欄位與分頁控制器 | FE / SA | P1 | T-06 | 補齊 TRIMP 衝量與主觀疲勞度，支援 10/25/50 分頁 |
+| **T-EXT-03** | 首頁五大心率/配速區間速查基準卡 | FE / UX | P1 | T-05 | 首頁嵌入五大區間速查尺，支援一鍵點擊過濾日誌 |
+| **T-EXT-07** | 全域非阻塞 Toast 輕量互動動畫通知 | UX / FE | P1 | T-13 | 取代原生 Alert，支援 4 種等級與平滑動畫倒數 |
+| **T-EXT-08** | Google Sheets 跨來源發布對接與診斷彈窗 | SA / BE / UX | P0 | T-02 | 整合 `pub?output=csv` 官方端點、5 重連線管道與診斷視窗 |
+
 ---
 
 ## 2. 系統架構 (System Architecture)
@@ -44,17 +73,18 @@
 ```mermaid
 graph TB
     subgraph "雲端資料來源 Data Sources"
-        GS_Logs["Google Sheets: 訓練日誌<br>(gid=0)"]
-        GS_Zones["Google Sheets: 訓練區間<br>(gid=1124408140)"]
-        GS_Schedule["Google Sheets: 訓練課表<br>(gid=196879307)"]
+        GS_Pub["Google Sheets 官方發布端點<br>(/d/e/2PACX-1v.../pub?output=csv)"]
+        GS_Raw["Google 試算表原始試算表<br>(1DahiYbLvl4.../export?format=csv)"]
     end
 
     subgraph "資料存取與快取層 Data Ingestion & Cache Layer"
-        SheetsSvc["SheetsService (sheetsService.js)"]
+        SheetsSvc["SheetsService (sheetsService.js)<br>五重自動備援擷取管道"]
         LocalProxy["本機代理 (serve.py /api/sheets)"]
-        DirectCSV["Google Docs CSV Export Direct"]
-        StorageSvc["StorageService (storageService.js)<br>TTL 1h + 前綴 runner_pulse_v6_"]
-        MockData["MockData (降級備援)"]
+        DirectPub["官方 CORS 端點 (/d/e/{publishedId}/pub)"]
+        GVizAPI["Google Visualization API (GViz)"]
+        ProxyCORS["公用 CORS 轉發代理備援 (allorigins / corsproxy)"]
+        StorageSvc["StorageService (storageService.js)<br>TTL 1h + 前綴 runner_pulse_v7_"]
+        MockData["MockData (高擬真離線測試備援)"]
     end
 
     subgraph "核心運算與演算法引擎 Business Logic & Calculation Engines"
@@ -68,19 +98,21 @@ graph TB
 
     subgraph "控制與呈現層 Controller & Presentation Views"
         AppCtrl["AppController (app.js)"]
-        ViewDash["1. 儀表板首頁 (Dashboard)"]
-        ViewLogs["2. 訓練日誌清單 (Training Logs)"]
+        ViewDash["1. 儀表板首頁 (Dashboard)<br>+ 五大區間速查尺 (T-EXT-03)"]
+        ViewLogs["2. 訓練日誌清單 (Training Logs)<br>+ RPE / TRIMP + 分頁器 (T-EXT-02)"]
         ViewVDOT["3. VDOT 跑力分析 (VDOT Trend)"]
         ViewZones["4. 心率區間對照 (HR Zones)"]
         ViewSched["5. 課表追蹤管理 (Schedule Tracker)"]
-        ModalSplits["每公里分段折線圖彈窗 (Lap Splits Modal)"]
+        ModalSplits["每公里分段折線圖彈窗 (T-11)"]
+        ModalProfile["跑者生理設定彈窗 (T-EXT-01)"]
+        ModalDiag["資料來源連線診斷彈窗 (T-EXT-08)"]
+        ToastEngine["全域 Toast 輕量通知 (T-EXT-07)"]
     end
 
-    GS_Logs --> DirectCSV
-    GS_Zones --> DirectCSV
-    GS_Schedule --> DirectCSV
-    DirectCSV --> SheetsSvc
-    LocalProxy -.-> SheetsSvc
+    GS_Pub --> DirectPub --> SheetsSvc
+    GS_Raw --> LocalProxy -.-> SheetsSvc
+    GS_Raw --> GVizAPI -.-> SheetsSvc
+    GS_Raw --> ProxyCORS -.-> SheetsSvc
     SheetsSvc <--> StorageSvc
     SheetsSvc -.Fallback.-> MockData
     SheetsSvc --> CSVParser --> ActParser
@@ -96,6 +128,9 @@ graph TB
     AppCtrl --> ViewZones
     AppCtrl --> ViewSched
     AppCtrl --> ModalSplits
+    AppCtrl --> ModalProfile
+    AppCtrl --> ModalDiag
+    AppCtrl --> ToastEngine
 ```
 
 ---
@@ -108,16 +143,16 @@ graph TB
 graph LR
     User((跑者 / 使用者))
     System[[Runner Pulse Analytics<br>跑步數據分析系統]]
-    GSheets[(Google 試算表<br>雲端日誌與課表)]
-    BrowserCache[(瀏覽器本地儲存<br>LocalStorage)]
+    GSheets[(Google 試算表<br>公開發布 CSV 串流)]
+    BrowserCache[(瀏覽器本地儲存<br>LocalStorage: 快取與跑者生理設定)]
 
-    User -->|瀏覽分析、切換分類、查看分段圖| System
-    System -->|渲染圖表、指標卡、課表比對結果| User
-    GSheets -->|公開 CSV 數據串流| System
-    System <-->|讀寫暫存活動與課表快取| BrowserCache
+    User -->|設定生理基準、切換分頁、查看分段與診斷| System
+    System -->|渲染圖表、指標卡、課表比對與 Toast 通知| User
+    GSheets -->|CORS 公開 CSV 數據串流| System
+    System <-->|讀寫暫存活動快取 (v7) 與跑者客製參數| BrowserCache
 ```
 
-#### DFD Level 1 (詳細資料處理流程)
+#### DFD Level 1 (詳細資料處理與五重備援流程)
 
 ```mermaid
 sequenceDiagram
@@ -126,26 +161,37 @@ sequenceDiagram
     participant App as AppController (app.js)
     participant Sheets as SheetsService
     participant Cache as StorageService (LocalStorage)
+    participant Google as Google Sheets API / CDN
     participant Engine as 運算解析引擎 (Parsers & Calculators)
     participant View as DOM & Chart.js 視覺化
 
-    Runner->>App: 開啟網頁 / 重新整理
+    Runner->>App: 開啟網頁 / 點擊重新整理
     App->>Sheets: batchFetchAllTabs(forceRefresh)
-    alt 快取存在且未逾時 (TTL 1hr)
+    alt 命中未過期快取 (TTL 1hr)
         Sheets->>Cache: get(CACHE_KEYS)
         Cache-->>Sheets: 回傳快取 JSON 物件
-    else 快取過期或強制更新
-        Sheets->>Sheets: fetchSheetData(sheetId, gid)
+        Sheets-->>App: 回傳 CACHED 狀態
+    else 快取過期或強制更新 (五重連線策略)
+        critical 多通道擷取管道
+            Sheets->>Google: 優先管道: /d/e/{publishedId}/pub?output=csv (原生 CORS)
+            alt 官方發布連線成功
+                Google-->>Sheets: 回傳 200 OK + CSV 串流 (含 Access-Control-Allow-Origin: *)
+            else 備援嘗試
+                Sheets->>Sheets: 嘗試本機 Proxy / GViz / 公用 CORS 代理
+            end
+        option 連線全數受阻
+            Sheets->>Sheets: 自動切換為高擬真 Mock Data 備援資料集
+        end
         Sheets->>Engine: parseCSV() & parseActivities()
-        Engine-->>Sheets: 結構化活動陣列 (含分段、心率、強度)
+        Engine-->>Sheets: 結構化活動陣列 (含分段、心率、TRIMP、RPE)
         Sheets->>Cache: set(CACHE_KEYS, data, 1hr)
+        Sheets-->>App: 回傳 LIVE 或 MOCK 狀態與資料集
     end
-    Sheets-->>App: 回傳 { logs, zones, schedule, status }
-    
+
     App->>Engine: 執行 VDOT 計算、週跑量彙整、課表動態比對、目標賽事偵測
     Engine-->>App: 傳回計算結果數據物件
-    App->>View: 渲染當前畫面 (Dashboard / Logs / VDOT / Zones / Schedule)
-    View-->>Runner: 呈現高光指標、Chart.js 折線圖、分段卡片
+    App->>View: 渲染當前畫面與五大區間速查卡片
+    View-->>Runner: 呈現高光指標、Chart.js 折線圖、分頁日誌與 Toast 提示
 ```
 
 ---
@@ -199,24 +245,30 @@ c:\Antigravity_WS\Runner_Web\
 
 ---
 
-### 模組 1：Google Sheets 批次同步、三層容錯與快取降級策略 (Task T-02)
+### 模組 1：Google Sheets 批次同步、五重容錯與發布端點 CORS 策略 (Task T-02, T-EXT-08)
 
 #### 1. 業務場景與目的
-跑者在雲端 Google 試算表擁有 3 個核心頁籤（訓練日誌 gid=0、訓練區間 gid=1124408140、課表 gid=196879307）。系統必須支援自動平行拉取，並在網路斷線、CORS 限制或 Google 端異常時自動降級。
+跑者在雲端 Google 試算表擁有 3 個核心頁籤（訓練日誌 gid=0、訓練區間 gid=1124408140、課表 gid=196879307）。由於純前端靜態站（GitHub Pages / Netlify）存取 Google 原生未發布之 `/export?format=csv` 連結會遭到瀏覽器 CORS 阻擋，系統必須具備多管道容錯機制，直連官方公開發布端點，並在網路中斷時秒級平滑降級為模擬資料集。
 
-#### 2. 核心邏輯與降級機制
-1. **策略判斷**：檢查執行環境是否為本機（`window.location.hostname === 'localhost'`）。若是，走本機代理 `/api/sheets?gid=...`；若處於生產環境（GitHub Pages / Netlify），直連 Google Sheets 公開匯出端點 `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`。
-2. **三層平滑降級 (Graceful Degradation)**：
-   - 第一層：**LIVE** 連線成功 ➔ 存入 LocalStorage（有效期 1 小時）➔ 狀態 `DataSourceStatus.LIVE`。
-   - 第二層：連線失敗但本地有歷史資料 ➔ 讀取過期快取 ➔ 狀態 `DataSourceStatus.CACHED`，並跳出黃色警示。
-   - 第三層：初次載入且網路完全中斷 ➔ 載入預載標準 Mock Data ➔ 狀態 `DataSourceStatus.MOCK`。
+#### 2. 核心邏輯與五重擷取管線
+1. **多管道備援管線 (Multi-Channel Ingestion Pipeline)**：
+   - **策略 1（本機代理）**：偵測若處於 `localhost`，優先調用 `serve.py` 後端代理端點 `/api/sheets?gid=...`。
+   - **策略 2（官方 CORS 發布端點）**：直連 `https://docs.google.com/spreadsheets/d/e/${publishedId}/pub?output=csv&gid=${gid}`，官方原生提供 `Access-Control-Allow-Origin: *` 標頭，無須後端代理。
+   - **策略 3（原始試算表 pub 端點）**：嘗試 `https://docs.google.com/spreadsheets/d/${sheetId}/pub?output=csv&gid=${gid}`。
+   - **策略 4（Google Visualization API）**：調用 GViz 查詢端點 `/gviz/tq?tqx=out:csv&gid=${gid}`。
+   - **策略 5（公用 CORS 代理備援）**：調用 `allorigins.win` 與 `corsproxy.io` 公開轉發代理。
+2. **三層平滑降級與自我修復 (Self-Healing Fallback)**：
+   - 第一層：**LIVE** 連線成功 ➔ 存入 LocalStorage（有效期 1 小時，版本前綴 `runner_pulse_v7_`）➔ 狀態標籤 `DataSourceStatus.LIVE`。
+   - 第二層：連線失敗但本地有未過期或歷史快取 ➔ 讀取本地快取 ➔ 狀態標籤 `DataSourceStatus.CACHED`，並跳出 Toast 提醒。
+   - 第三層：全數管道受阻（如完全離線）➔ 自動載入標準測試集 ➔ 狀態標籤 `DataSourceStatus.MOCK`，確保全站圖表與日誌無縫運行不閃退。
 
 #### 3. 核心方法與程式碼對照
-- **檔案路徑**：[js/services/sheetsService.js](file:///c:/Antigravity_WS/Runner_Web/js/services/sheetsService.js#L35-L210)
-  - `fetchSheetData(sheetId, gid)`：行 [L35-L69](file:///c:/Antigravity_WS/Runner_Web/js/services/sheetsService.js#L35-L69)，負責判斷本機/線上環境與 HTTP 串流擷取。
-  - `batchFetchAllTabs(forceRefresh)`：行 [L84-L166](file:///c:/Antigravity_WS/Runner_Web/js/services/sheetsService.js#L84-L166)，使用 `Promise.all` 平行非同步讀取 3 頁籤，並統計 raw rows。
-  - 降級與快取回退邏輯：行 [L167-L208](file:///c:/Antigravity_WS/Runner_Web/js/services/sheetsService.js#L167-L208)。
-- **本機 Proxy 檔案**：[serve.py](file:///c:/Antigravity_WS/Runner_Web/serve.py#L30-L75)，提供本機跨域處理。
+- **檔案路徑**：[js/services/sheetsService.js](file:///c:/Antigravity_WS/Runner_Web/js/services/sheetsService.js)
+  - `fetchSheetData(sheetId, gid)`：行 [L35-L130](file:///c:/Antigravity_WS/Runner_Web/js/services/sheetsService.js#L35-L130)，五重備援管道平行串接。
+  - `batchFetchAllTabs(forceRefresh)`：行 [L140-L260](file:///c:/Antigravity_WS/Runner_Web/js/services/sheetsService.js#L140-L260)，使用 `Promise.all` 平行非同步讀取 3 頁籤並校驗分類。
+  - 降級與快取回退邏輯：行 [L261-L290](file:///c:/Antigravity_WS/Runner_Web/js/services/sheetsService.js#L261-L290)。
+- **設定常數**：[js/config.js](file:///c:/Antigravity_WS/Runner_Web/js/config.js#L7-L38)，定義 `SPREADSHEET_ID`、`PUBLISHED_ID` 與 `CACHE.PREFIX: runner_pulse_v7_`。
+- **本機 Proxy 檔案**：[serve.py](file:///c:/Antigravity_WS/Runner_Web/serve.py#L30-L115)，提供本機跨域快取與轉發處理。
 
 ---
 
@@ -408,15 +460,129 @@ VDOT 是世界著名跑步教練 Jack Daniels 發明的跑力指數。系統自�
 
 ---
 
+### 模組 11：跑者生理基準自訂與全站動態重算 (Task T-EXT-01)
+
+#### 1. 業務場景與目的
+跑者隨著訓練週期進展（如從基礎期進入質量競賽期），跑力指數 (VDOT)、乳酸門檻心率 (LTHR) 與最大心率 (Max HR) 會隨之進步或微調。過去生理基準寫死於試算表常數中，跑者無法在網頁端自訂；本模組提供專屬自訂彈窗，支援跑者隨時調整個人參數，並即時重繪全站所有配速與心率區間。
+
+#### 2. 商業邏輯與檢核規則
+- **輸入欄位防呆規則 (Validation Rules)**：
+  - `Runner Name`：字串長度 1~30 字元，不得為空。
+  - `VDOT`：浮點數，有效區間 `20.0 ~ 85.0`（依 Jack Daniels Running Formula 數學有效域）。
+  - `LTHR`：整數，有效區間 `100 ~ 220 bpm`（依 30 分鐘全力計時平均心率）。
+  - `Max HR`：整數，有效區間 `120 ~ 240 bpm`。
+  - **邊界防呆檢核**：`Max HR` 必須嚴格大於 `LTHR`（`maxHr > lthr`），否則拋出警示中斷儲存。
+- **即時連動預覽 (Live Preview)**：彈窗輸入時即時動態計算 5 大心率區間閥值（Zone 1~5）與 5K 預估配速提示。
+- **持久化機制**：以 JSON 格式儲存於 LocalStorage (`runner_profile_custom`)，系統重啟時優先載入。
+
+#### 3. 核心方法與程式碼對照
+- **資料存取層**：[js/services/storageService.js](file:///c:/Antigravity_WS/Runner_Web/js/services/storageService.js) `getRunnerProfile()`、`saveRunnerProfile()`、`resetRunnerProfile()`。
+- **主控與事件**：[js/app.js](file:///c:/Antigravity_WS/Runner_Web/js/app.js) `initSettingsModalEvents()`、`updateSettingsPreview()`、`handleSettingsSubmit()`。
+- **彈窗標記與樣式**：[index.html](file:///c:/Antigravity_WS/Runner_Web/index.html) `#runnerSettingsModal`；[css/components.css](file:///c:/Antigravity_WS/Runner_Web/css/components.css) `.modal-container.modal-sm`。
+
+---
+
+### 模組 12：訓練日誌總表 RPE / TRIMP 欄位與分頁控制器 (Task T-EXT-02)
+
+#### 1. 業務場景與目的
+單純依靠配速與心率無法完全反映該次訓練對跑者自律神經與心肺系統的整體累積衝量。本模組補全客觀運動衝量 (TRIMP) 與主觀疲勞度 (RPE)，並為 200+ 筆歷史活動提供順暢的分頁控制器 (Pagination)，徹底解決單頁渲染上百筆 DOM 帶來的效能延遲。
+
+#### 2. 核心運算公式與視覺化規格
+- **Banister 運動衝量 (TRIMP, Training Impulse)**：
+  $$\text{TRIMP} = D \times \Delta\text{HR} \times 0.64 \times e^{1.92 \times \Delta\text{HR}}$$
+  其中 $D$ 為活動時間（分鐘），$\Delta\text{HR} = \frac{\text{HR}_{\text{avg}} - \text{HR}_{\text{rest}}}{\text{HR}_{\text{max}} - \text{HR}_{\text{rest}}}$ 為心率儲備儲量百分比。
+  系統以數值 Badge 呈現：`0~50 (輕度)`、`50~100 (中度)`、`100~200 (高負荷)`、`>200 (極限)`。
+- **Borg CR10 主觀自覺疲勞量表 (RPE, Rating of Perceived Exertion)**：
+  依據心率強度與活動分類映射 1~10 級（例如 RPE 2 輕鬆修復、RPE 4-5 有氧巡航、RPE 7-8 乳酸門檻、RPE 9-10 全力衝刺），並搭配 Emoji 標籤與警示色。
+- **分頁控制器規格**：
+  - 支援每頁顯示筆數切換：`10 筆 / 頁`、`25 筆 / 頁`、`50 筆 / 頁`。
+  - 智慧省略號演算法：當總頁數大於 7 頁時，自動顯示 `1 ... 4 5 6 ... 12` 模式。
+  - 上一頁 / 下一頁邊界停用按鈕 (`disabled`)。
+
+#### 3. 核心方法與程式碼對照
+- **分頁計算與 DOM 渲染**：[js/app.js](file:///c:/Antigravity_WS/Runner_Web/js/app.js) `renderTrainingLogsView()`、`renderPaginationControls()`。
+- **樣式元件**：[css/components.css](file:///c:/Antigravity_WS/Runner_Web/css/components.css) `.pagination-controls`、`.page-btn`、`.page-size-select`。
+
+---
+
+### 模組 13：首頁五大心率/配速區間速查基準卡 (Task T-EXT-03)
+
+#### 1. 業務場景與目的
+跑者在每天出門跑步前，需要一眼看清當天各種課表（恢復跑、有氧長距離、節奏跑、間歇跑）對應的「目標心率範圍」與「配速區間」。本模組在儀表板首頁 Hero 卡片正下方，動態渲染 5 大區間速查尺 (Zone Benchmark Cards)，並支援「一鍵反向篩選日誌」。
+
+#### 2. 生理學模型與互動邏輯
+- 依據跑者當前 VDOT 與 LTHR，計算五大區間卡片：
+  1. **Zone 1 修復跑 (Recovery)**: `< 85% LTHR`，恢復代謝。
+  2. **Zone 2 有氧基礎 (Aerobic Easy)**: `85% ~ 89% LTHR`，微血管新生與燃脂基底。
+  3. **Zone 3 馬拉松配速 (Tempo/Marathon)**: `90% ~ 94% LTHR`，節奏耐力。
+  4. **Zone 4 乳酸門檻 (Threshold)**: `95% ~ 100% LTHR`，提升乳酸清除速率。
+  5. **Zone 5 最大攝氧量間歇 (VO2 Max / Interval)**: `> 100% LTHR`，心肺輸出極限。
+- **反向聯動**：點擊任意區間卡片，系統自動跳轉「訓練日誌清單」並帶入該訓練類型過濾器（例如點擊 Zone 4 卡片，自動篩選出所有 Threshold 訓練）。
+
+#### 3. 核心方法與程式碼對照
+- **運算邏輯**：[js/utils/zoneCalc.js](file:///c:/Antigravity_WS/Runner_Web/js/utils/zoneCalc.js) `computeZoneBenchmarkCards(profile)`。
+- **卡片渲染與跳轉**：[js/app.js](file:///c:/Antigravity_WS/Runner_Web/js/app.js) `renderDashboard()`。
+- **樣式視覺**：[css/components.css](file:///c:/Antigravity_WS/Runner_Web/css/components.css) `.benchmark-bar-section`、`.benchmark-zone-card`。
+
+---
+
+### 模組 14：全域非阻塞 Toast 輕量互動動畫通知 (Task T-EXT-07)
+
+#### 1. 業務場景與目的
+原生的瀏覽器 `window.alert()` 會阻斷 JavaScript 執行緒與使用者介面互動，在行動端或進行資料重新整理時體驗極差。本模組實作輕量現代化、全域懸浮的 Toast 通知系統。
+
+#### 2. 規格與互動機制
+- **通知型態**：支援 4 種語意化等級：
+  - `success`（綠色/打勾圖示）：儲存成功、連線成功、參數更新。
+  - `info`（藍色/驚嘆號圖示）：系統資料載入中、快取提示。
+  - `warning`（黃色/三角警示圖示）：Mock Data 模擬模式降級警告。
+  - `danger`（紅色/錯誤叉叉圖示）：網路連線中斷、表單驗證失敗。
+- **動畫與倒數機制**：
+  - 預設持續 4200ms，底部附帶平滑進度條倒數動畫 (`.toast-progress`)。
+  - **懸停暫停 (Hover Pause)**：滑鼠懸停於 Toast 上時自動暫停倒數計時，移開後恢復 1200ms 平滑關閉。
+  - 手動關閉按鈕 (`&times;`)，平滑淡出與縮放退場 (`toast-hide`)。
+
+#### 3. 核心方法與程式碼對照
+- **全域 Method**：[js/app.js](file:///c:/Antigravity_WS/Runner_Web/js/app.js) `showToast(message, type, duration)`。
+- **向後相容**：`this.showAlert()` 自動轉接調用 `showToast()`。
+- **樣式與動畫**：[css/components.css](file:///c:/Antigravity_WS/Runner_Web/css/components.css) `.toast-container`、`.toast-item`、`@keyframes toastProgress`。
+
+---
+
+### 模組 15：Google Sheets 跨來源發布對接與互動診斷彈窗 (Task T-EXT-08)
+
+#### 1. 業務場景與目的
+由於 Google 試算表預設的 `/export?format=csv` 下載連結不允許前端 JavaScript 進行跨來源存取 (CORS)，導致 GitHub Pages 上的靜態網頁持續處於 Mock Data 狀態。本模組整合官方公開發布端點，並提供頂部可點擊的資料連線狀態晶片與診斷彈窗 (`#dataSourceModal`)，給予跑者 1 分鐘自助發布指引與一鍵重試連線機制。
+
+#### 2. 系統架構與操作規格
+- **官方 CORS 端點架構**：
+  `https://docs.google.com/spreadsheets/d/e/${PUBLISHED_ID}/pub?output=csv&gid=${gid}`
+  Google CDN 會為已發布文件直接附加 `Access-Control-Allow-Origin: *`，支援全球任何靜態網頁直接 fetch，免金鑰、免憑證、免架設中繼伺服器。
+- **診斷彈窗規格 (`#dataSourceModal`)**：
+  - 點擊頂部導覽列 `#dataSourceStatus` 狀態晶片即可開啟診斷視窗。
+  - 若處於 **MOCK 狀態**：以黃色警示說明 CORS 限制原因，並呈現 1 分鐘啟用步驟清單。
+  - 若處於 **LIVE 狀態**：以綠色徽章顯示即時連線成功，並列出活動總筆數與最後同步時間戳記。
+  - 提供快捷按鈕：【開啟 Google 試算表 &rarr;】與【🔄 立即重新連線】。
+
+#### 3. 核心方法與程式碼對照
+- **多通道擷取**：[js/services/sheetsService.js](file:///c:/Antigravity_WS/Runner_Web/js/services/sheetsService.js) `fetchSheetData()`。
+- **診斷彈窗事件與渲染**：[js/app.js](file:///c:/Antigravity_WS/Runner_Web/js/app.js) `initDataSourceModalEvents()`、`openDataSourceModal()`。
+- **HTML 結構**：[index.html](file:///c:/Antigravity_WS/Runner_Web/index.html) `#dataSourceStatus`、`#dataSourceModal`。
+
+---
+
 ## 4. 架構師審查評估與維護操作指南 (Architect Review & Operations Manual)
 
-### 4.1 架構審查總評 (Architectural Assessment)
-1. **可用性與彈性 (Availability & Resilience)**：⭐⭐⭐⭐⭐  
-   系統採用三層資料降級（LIVE ➔ CACHE ➔ MOCK），即使 Google 試算表伺服器短暫不穩定，使用者依然能在手機上流暢檢視快取數據，不閃退、不報白畫面。
-2. **零運維成本 (Zero Maintenance Overhead)**：⭐⭐⭐⭐⭐  
-   無任何虛擬機器、無 Docker 容器、無 SQL 資料庫，無需定期維護 Linux 安全補丁，真正達到「部完即走」的高效運維境界。
-3. **資料隔離與私密性**：  
-   系統僅對 Google 試算表進行公開唯讀（Read-Only）擷取，前端不保存任何 Google 憑證或帳密，無憑證外洩風險。
+### 4.1 架構審查總評與潛在風險分析 (Architectural Review & Risk Analysis)
+依據 `@03_role_architect.md` 主架構師規範，針對近期新增模組與雲端資料存取層進行全面架構審查：
+
+| 風險等級 | 影響模組/邏輯 | 問題描述 | 建議修正方案與目前落實狀態 |
+|---|---|---|---|
+| **高 (High)** | 模組 1 / 15: Google Sheets 擷取 | 靜態站直接 fetch `/export` 端點受限於 CORS，導致全站持續降級為 Mock Data | **已解決**：整合 Google 官方發布公開端點 (`pub?output=csv`)，附加原生 CORS 標頭，並導入五重自動備援管線 |
+| **中 (Medium)** | 模組 1: 本地快取 (LocalStorage) | 試算表剛發布後，若使用者端保有舊版本快取，可能延遲看到最新日誌 | **已解決**：升級快取版本前綴至 `runner_pulse_v7_`，並於診斷彈窗與頂部提供「強制重新整理」一鍵覆蓋 |
+| **中 (Medium)** | 模組 11: 跑者生理基準表單 | 跑者可能輸入負數、極端異常值（如 Max HR < LTHR），導致區間計算崩潰 | **已解決**：實作強嚴格驗證（VDOT 20~85、LTHR 100~220、MaxHR > LTHR），並於前端呈現行內錯誤提示 |
+| **低 (Low)** | 模組 12: 日誌分頁控制器 | 若跑者篩選出 0 筆結果，分頁器可能計算產生 NaN 頁碼 | **已解決**：加入 `Math.max(1, Math.ceil(total / pageSize))` 防呆防溢保護 |
+| **低 (Low)** | 模組 14: 全域 Toast 系統 | 多筆快速異步通知同時觸發時，Toast 可能堆疊超出畫面底部 | **已解決**：採用 `flex-direction: column-reverse` 與 4200ms 自動倒數銷毀機制 |
 
 ### 4.2 跑者常見維護操作指南
 
@@ -439,6 +605,18 @@ git commit -m "更新功能描述"
 git push
 ```
 按下 Enter 後，**GitHub Pages 與 Netlify 會在 10 秒內同步自動上線**！
+
+#### 3. 如何將 Google 試算表發布到網路並取得 CORS 專屬金鑰？
+若您更換了全新的試算表，或需要重新授權網頁直連：
+1. 開啟目標 Google 試算表。
+2. 點擊頂部功能表 **【檔案 (File)】** ➔ **【共用 (Share)】** ➔ **【發布到網路 (Publish to the web)】**。
+3. 在彈出視窗中：
+   - 範圍選擇：**【整份文件 (Entire Document)】**
+   - 連結格式：選擇 **【逗號分隔值 (.csv)】**
+   - 點擊藍色 **【發布 (Publish)】** 按鈕並確認「確定要發布這個選項嗎？」。
+4. 發布後 Google 會提供一串網址，例如：
+   `https://docs.google.com/spreadsheets/d/e/2PACX-1v.../pubhtml`
+5. 取出其中的 `2PACX-1v...` 金鑰，貼入 `js/config.js` 的 `PUBLISHED_ID` 欄位中，Push 上 GitHub 即可永久生效！
 
 ---
 *(本手冊完畢，由 PM、SA 與系統架構師聯合認證，做為 Runner Pulse Analytics 專案之標準工程基準規格書)*

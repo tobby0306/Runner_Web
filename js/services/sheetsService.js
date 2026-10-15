@@ -48,25 +48,93 @@ class SheetsService {
           headers: { 'Accept': 'text/csv' }
         });
         if (proxyResp.ok) {
-          csvText = await proxyResp.text();
+          const txt = await proxyResp.text();
+          if (txt && !txt.includes('"error":') && txt.length > 50) {
+            csvText = txt;
+          }
         }
       } catch {
-        // 若無後端 proxy，靜默略過並嘗試策略 2
+        // 若無後端 proxy 或 502，靜默略過並嘗試下一策略
       }
     }
 
-    // 策略 2: 直連 Google Sheets 公開 CSV Export URL
+    // 策略 2: 嘗試直連 Google Sheets「發布到網路」(pub?output=csv) 端點 (官方支援 CORS 跨來源存取)
     if (!csvText) {
-      const directUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gidStr}`;
-      const response = await fetch(directUrl, {
-        method: 'GET',
-        headers: { 'Accept': 'text/csv' }
-      });
-
-      if (!response.ok) {
-        throw new Error(`Google Sheets CSV 擷取失敗 [HTTP ${response.status}] (GID: ${gidStr})`);
+      const pubUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/pub?output=csv&gid=${gidStr}`;
+      try {
+        const resp = await fetch(pubUrl, { method: 'GET' });
+        if (resp.ok) {
+          const txt = await resp.text();
+          if (txt && !txt.includes('<!DOCTYPE html>') && !txt.includes('ServiceLogin') && txt.length > 50) {
+            csvText = txt;
+          }
+        }
+      } catch {
+        // 靜默嘗試下一管道
       }
-      csvText = await response.text();
+    }
+
+    // 策略 3: 直連 Google Sheets 公開 CSV Export URL
+    if (!csvText) {
+      try {
+        const directUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gidStr}`;
+        const response = await fetch(directUrl, {
+          method: 'GET',
+          headers: { 'Accept': 'text/csv' }
+        });
+        if (response.ok) {
+          const txt = await response.text();
+          if (txt && !txt.includes('<!DOCTYPE html>') && !txt.includes('ServiceLogin') && txt.length > 50) {
+            csvText = txt;
+          }
+        }
+      } catch {
+        // 靜默嘗試下一管道
+      }
+    }
+
+    // 策略 4: Google Visualization API (GViz CSV)
+    if (!csvText) {
+      try {
+        const gvizUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&gid=${gidStr}`;
+        const resp = await fetch(gvizUrl, { method: 'GET' });
+        if (resp.ok) {
+          const txt = await resp.text();
+          if (txt && !txt.includes('<!DOCTYPE html>') && txt.length > 50) {
+            csvText = txt;
+          }
+        }
+      } catch {
+        // 靜默嘗試下一管道
+      }
+    }
+
+    // 策略 5: 公用 CORS 轉發代理 (若試算表已設為「任何知道連結的人皆可檢視」但尚未執行發布到網路)
+    if (!csvText) {
+      const targetExport = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gidStr}`;
+      const proxyList = [
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(targetExport)}`,
+        `https://corsproxy.io/?url=${encodeURIComponent(targetExport)}`
+      ];
+
+      for (const pUrl of proxyList) {
+        try {
+          const resp = await fetch(pUrl, { method: 'GET' });
+          if (resp.ok) {
+            const txt = await resp.text();
+            if (txt && !txt.includes('<!DOCTYPE html>') && !txt.includes('ServiceLogin') && txt.length > 50) {
+              csvText = txt;
+              break;
+            }
+          }
+        } catch {
+          // 靜默嘗試下一個代理
+        }
+      }
+    }
+
+    if (!csvText) {
+      throw new Error(`無法連線 Google Sheets 資料來源 (GID: ${gidStr})`);
     }
 
     const rows = parseCSV(csvText);

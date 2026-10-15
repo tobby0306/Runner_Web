@@ -98,8 +98,8 @@
         </div>
 
         <div class="header-right">
-          <!-- Data Source Status Chip -->
-          <div class="status-chip" id="dataSourceStatus">
+          <!-- Data Source Status Chip (Clickable for diagnostics) -->
+          <div class="status-chip" id="dataSourceStatus" style="cursor: pointer;" title="點擊檢視連線狀態與 Google Sheets 發布設定指引">
             <span class="status-dot status-loading"></span>
             <span class="status-label">正在初始化...</span>
           </div>
@@ -251,6 +251,34 @@
           <button type="submit" class="btn btn-primary btn-sm" id="btnSaveSettings">儲存生理設定</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Data Source Diagnostic Modal -->
+  <div class="modal-backdrop" id="dataSourceModal" aria-hidden="true">
+    <div class="modal-container modal-sm" role="dialog" aria-modal="true" aria-labelledby="dataSourceModalTitle">
+      <div class="modal-header">
+        <h3 class="modal-title" id="dataSourceModalTitle" style="display:flex;align-items:center;gap:0.5rem;">
+          <span>📡 資料來源連線診斷與設定</span>
+        </h3>
+        <button class="btn btn-ghost btn-sm btn-icon" id="btnCloseDataSourceModal" aria-label="關閉連線診斷彈窗">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div class="modal-body" style="padding: 1.25rem 1.5rem;">
+        <div id="dataSourceModalContent">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex; justify-content:space-between; align-items:center;">
+        <a href="https://docs.google.com/spreadsheets/d/1DahiYbLvl4zR6-5EABCSwTATCtkP7N3IywSxWo5JKas/" target="_blank" rel="noopener" class="btn btn-outline btn-sm">
+          開啟 Google 試算表 &rarr;
+        </a>
+        <div style="display:flex; gap:0.5rem;">
+          <button type="button" class="btn btn-secondary btn-sm" id="btnCancelDataSourceModal">關閉</button>
+          <button type="button" class="btn btn-primary btn-sm" id="btnRetryDataSourceModal">🔄 立即重新連線</button>
+        </div>
+      </div>
     </div>
   </div>
 

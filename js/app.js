@@ -97,7 +97,12 @@ class AppController {
       modalMeta: document.getElementById('modalActivityMeta'),
       modalSplitsContent: document.getElementById('modalSplitsContent'),
       btnCloseModal: document.getElementById('btnCloseModal'),
-      btnModalCloseAction: document.getElementById('btnModalCloseAction')
+      btnModalCloseAction: document.getElementById('btnModalCloseAction'),
+      dataSourceModal: document.getElementById('dataSourceModal'),
+      btnCloseDataSourceModal: document.getElementById('btnCloseDataSourceModal'),
+      btnCancelDataSourceModal: document.getElementById('btnCancelDataSourceModal'),
+      btnRetryDataSourceModal: document.getElementById('btnRetryDataSourceModal'),
+      dataSourceModalContent: document.getElementById('dataSourceModalContent')
     };
   }
 
@@ -111,6 +116,7 @@ class AppController {
     this.bindEvents();
     this.initModalEvents();
     this.initSettingsModalEvents();
+    this.initDataSourceModalEvents();
     await this.loadApplicationData(false);
   }
 
@@ -271,6 +277,114 @@ class AppController {
         this.handleSettingsSubmit();
       });
     }
+  }
+
+  /**
+   * 綁定資料來源連線診斷彈窗事件
+   */
+  initDataSourceModalEvents() {
+    if (this.dom.dataSourceStatus) {
+      this.dom.dataSourceStatus.addEventListener('click', () => this.openDataSourceModal());
+    }
+
+    const closeModal = () => {
+      if (this.dom.dataSourceModal) {
+        this.dom.dataSourceModal.classList.remove('open');
+      }
+    };
+
+    if (this.dom.btnCloseDataSourceModal) {
+      this.dom.btnCloseDataSourceModal.addEventListener('click', closeModal);
+    }
+    if (this.dom.btnCancelDataSourceModal) {
+      this.dom.btnCancelDataSourceModal.addEventListener('click', closeModal);
+    }
+    if (this.dom.dataSourceModal) {
+      this.dom.dataSourceModal.addEventListener('click', (e) => {
+        if (e.target === this.dom.dataSourceModal) closeModal();
+      });
+    }
+
+    if (this.dom.btnRetryDataSourceModal) {
+      this.dom.btnRetryDataSourceModal.addEventListener('click', async () => {
+        closeModal();
+        this.showToast('正在嘗試連線 Google Sheets 即時資料庫...', 'info', 2500);
+        await this.loadApplicationData(true);
+      });
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.dom.dataSourceModal?.classList.contains('open')) {
+        closeModal();
+      }
+    });
+  }
+
+  /**
+   * 開啟資料來源診斷彈窗並依當前狀態渲染內容
+   */
+  openDataSourceModal() {
+    if (!this.dom.dataSourceModal || !this.dom.dataSourceModalContent) return;
+
+    const isLive = this.data.status === DataSourceStatus.LIVE;
+    const isCached = this.data.status === DataSourceStatus.CACHED;
+
+    let statusBadge = '';
+    let statusDesc = '';
+
+    if (isLive) {
+      statusBadge = `<span class="badge" style="background:rgba(0,242,254,0.15);color:var(--accent-cyan);border:1px solid rgba(0,242,254,0.3);padding:0.4rem 0.85rem;font-size:0.88rem;border-radius:20px;">🟢 Google Sheets 雲端即時連線成功</span>`;
+      statusDesc = `
+        <div style="margin-top:1rem;color:var(--text-secondary);font-size:0.88rem;line-height:1.7;">
+          <p>恭喜！系統已成功連線您的 Google Sheets 試算表，當前共載入 <strong style="color:var(--accent-cyan);">${this.data.logs?.length || 0}</strong> 筆 Garmin 訓練活動。</p>
+          <div style="margin-top:0.75rem;padding:0.6rem 0.8rem;background:var(--bg-secondary);border-radius:6px;border:1px solid var(--border-subtle);font-size:0.82rem;">
+            <div>📅 最後同步時間：${this.data.lastSync ? this.data.lastSync.toLocaleString() : '剛剛'}</div>
+            <div>📄 訓練日誌活動：${this.data.logs?.length || 0} 筆</div>
+            <div>🎯 課表追蹤項目：${this.data.schedule?.length || 0} 週</div>
+          </div>
+        </div>
+      `;
+    } else if (isCached) {
+      statusBadge = `<span class="badge" style="background:rgba(163,230,53,0.15);color:var(--accent-lime);border:1px solid rgba(163,230,53,0.3);padding:0.4rem 0.85rem;font-size:0.88rem;border-radius:20px;">🔵 本地快取資料 (Local Cache)</span>`;
+      statusDesc = `
+        <div style="margin-top:1rem;color:var(--text-secondary);font-size:0.88rem;line-height:1.7;">
+          <p>系統目前使用瀏覽器本地快取的 Google Sheets 數據（快取有效期 1 小時以維持最速載入）。</p>
+          <p style="font-size:0.82rem;color:var(--text-muted);margin-top:0.5rem;">若您剛剛在 Google 試算表新增了跑步紀錄，可點擊下方「🔄 立即重新連線」強制同步最新數據。</p>
+        </div>
+      `;
+    } else {
+      statusBadge = `<span class="badge" style="background:rgba(234,179,8,0.15);color:var(--accent-gold);border:1px solid rgba(234,179,8,0.3);padding:0.4rem 0.85rem;font-size:0.88rem;border-radius:20px;">🟡 目前處於 Mock Data (模擬展示模式)</span>`;
+      statusDesc = `
+        <div style="margin-top:0.85rem;color:var(--text-secondary);font-size:0.85rem;line-height:1.65;">
+          <div style="background:rgba(255,107,74,0.1);border-left:3px solid var(--accent-orange);padding:0.65rem 0.85rem;border-radius:4px;margin-bottom:1rem;">
+            <strong style="color:var(--accent-orange);display:block;margin-bottom:0.25rem;">❓ 為什麼會顯示模擬模式？</strong>
+            瀏覽器有嚴格的跨來源安全性限制 (CORS)。當 Google 試算表尚未執行<strong>「發布到網路」</strong>時，瀏覽器會阻擋直接存取 CSV。系統為避免畫面空白，會自動切換為高擬真模擬數據備援。
+          </div>
+
+          <div style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:8px;padding:0.9rem;margin-bottom:0.75rem;">
+            <div style="font-weight:700;color:var(--text-primary);margin-bottom:0.6rem;display:flex;align-items:center;gap:0.35rem;font-size:0.9rem;">
+              <span>⚡ 只要 1 分鐘！啟用 Google Sheets 雲端連線步驟：</span>
+            </div>
+            <ol style="margin:0;padding-left:1.25rem;color:var(--text-secondary);font-size:0.83rem;line-height:1.75;">
+              <li>點擊左下角 <strong>「開啟 Google 試算表 &rarr;」</strong> 前往試算表</li>
+              <li>點選頂部功能表 <strong>【檔案 (File)】</strong> ➔ <strong>【共用 (Share)】</strong> ➔ <strong>【發布到網路 (Publish to the web)】</strong></li>
+              <li>在發布視窗中：選擇 <strong>【整份文件】</strong>，格式選擇 <strong>【逗號分隔值 (.csv)】</strong></li>
+              <li>點擊 <strong>【發布 (Publish)】</strong> 按鈕並按下確定</li>
+              <li>完成後回到本頁面，點擊下方 <strong>【🔄 立即重新連線】</strong>，即可立即載入真實 Garmin 訓練日誌！</li>
+            </ol>
+          </div>
+        </div>
+      `;
+    }
+
+    this.dom.dataSourceModalContent.innerHTML = `
+      <div style="text-align:center;margin-bottom:0.5rem;">
+        ${statusBadge}
+      </div>
+      ${statusDesc}
+    `;
+
+    this.dom.dataSourceModal.classList.add('open');
   }
 
   /**

@@ -20,6 +20,9 @@
   <link rel="stylesheet" href="css/components.css">
 </head>
 <body class="theme-dark">
+  <!-- Global Toast Notification Container (Task T-EXT-07) -->
+  <div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+
   <div id="app" class="app-layout">
     <!-- Sidebar Navigation -->
     <aside class="app-sidebar" id="appSidebar">
@@ -63,9 +66,15 @@
         <div class="athlete-card">
           <div class="athlete-avatar">🏃</div>
           <div class="athlete-info">
-            <div class="athlete-name">Tobby Runner</div>
-            <div class="athlete-meta">VDOT: <strong id="sidebarVdotBadge">36.0</strong> | LTHR: 172</div>
+            <div class="athlete-name" id="sidebarAthleteName">Tobby Runner</div>
+            <div class="athlete-meta">VDOT: <strong id="sidebarVdotBadge">36.0</strong> | LTHR: <span id="sidebarLthrBadge">172</span></div>
           </div>
+          <button class="btn btn-ghost btn-sm btn-icon" id="btnOpenSettingsSidebar" title="自訂跑者生理參數 (VDOT, LTHR, Max HR)" aria-label="生理設定">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+          </button>
         </div>
       </div>
     </aside>
@@ -99,6 +108,15 @@
           <button class="btn btn-secondary btn-sm" id="btnRefreshData" title="重新整理 Google Sheets 資料">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
             <span>重新整理</span>
+          </button>
+
+          <!-- Runner Settings Button -->
+          <button class="btn btn-secondary btn-sm" id="btnOpenSettingsHeader" title="自訂跑者生理參數 (VDOT, LTHR, Max HR)">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+            <span>生理設定</span>
           </button>
 
           <!-- Toggle Theme or External Spec link -->
@@ -156,6 +174,83 @@
       <div class="modal-footer">
         <button class="btn btn-secondary btn-sm" id="btnModalCloseAction">關閉</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Runner Profile Settings Modal (Task T-EXT-01) -->
+  <div class="modal-backdrop" id="runnerSettingsModal" aria-hidden="true">
+    <div class="modal-container modal-sm" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title" id="settingsModalTitle">⚙️ 跑者生理基準自訂設定</h3>
+          <div class="text-muted" style="font-size: 0.82rem; margin-top: 0.2rem;">調整 VDOT、乳酸門檻心率與最大心率，全站數據即時重算</div>
+        </div>
+        <button class="btn btn-ghost btn-sm btn-icon" id="btnCloseSettingsModal" aria-label="關閉設定彈窗">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      
+      <form id="runnerSettingsForm" class="modal-form">
+        <div class="modal-body">
+          <div id="settingsAlertContainer" class="settings-alert-container"></div>
+
+          <div class="form-group">
+            <label for="inputRunnerName" class="form-label">跑者姓名 / 代號</label>
+            <input type="text" id="inputRunnerName" class="form-control" maxlength="30" placeholder="例如: Tobby Runner" required>
+          </div>
+
+          <div class="form-group">
+            <div class="form-label-row">
+              <label for="inputRunnerVdot" class="form-label">基準 VDOT 跑力指標</label>
+              <span class="form-hint" id="vdotPaceHint"></span>
+            </div>
+            <input type="number" id="inputRunnerVdot" class="form-control" step="0.1" min="20.0" max="85.0" placeholder="36.0" required>
+            <small class="text-muted" style="display:block;margin-top:0.3rem">有效範圍: 20.0 ~ 85.0 (Jack Daniels Running Formula 公式基準)</small>
+          </div>
+
+          <div class="form-group">
+            <div class="form-label-row">
+              <label for="inputRunnerLthr" class="form-label">乳酸門檻心率 (LTHR)</label>
+              <span class="form-hint">Zone 4 上限閥值</span>
+            </div>
+            <div class="input-with-unit">
+              <input type="number" id="inputRunnerLthr" class="form-control" step="1" min="100" max="220" placeholder="172" required>
+              <span class="unit-label">bpm</span>
+            </div>
+            <small class="text-muted" style="display:block;margin-top:0.3rem">有效範圍: 100 ~ 220 bpm (依 30 分鐘全力計時測驗平均心率)</small>
+          </div>
+
+          <div class="form-group">
+            <div class="form-label-row">
+              <label for="inputRunnerMaxHr" class="form-label">最大心率 (Max HR)</label>
+              <span class="form-hint">Zone 5 天花板</span>
+            </div>
+            <div class="input-with-unit">
+              <input type="number" id="inputRunnerMaxHr" class="form-control" step="1" min="120" max="240" placeholder="196" required>
+              <span class="unit-label">bpm</span>
+            </div>
+            <small class="text-muted" style="display:block;margin-top:0.3rem">有效範圍: 120 ~ 240 bpm (必須大於乳酸門檻心率)</small>
+          </div>
+
+          <!-- 即時預覽計算區間 -->
+          <div class="preview-zone-calc" id="previewZoneCalc">
+            <div class="preview-title">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+              <span>即時連動預覽：五大心率區間閥值</span>
+            </div>
+            <div class="preview-badges-grid" id="previewBadgesGrid">
+              <!-- Dynamically populated by JS input events -->
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost btn-sm" id="btnResetSettings">恢復預設值</button>
+          <div style="flex: 1"></div>
+          <button type="button" class="btn btn-secondary btn-sm" id="btnCancelSettings">取消</button>
+          <button type="submit" class="btn btn-primary btn-sm" id="btnSaveSettings">儲存生理設定</button>
+        </div>
+      </form>
     </div>
   </div>
 

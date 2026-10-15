@@ -8,12 +8,16 @@
 
 import { APP_CONFIG } from './config.js';
 import { sheetsService, DataSourceStatus } from './services/sheetsService.js';
+import { storageService } from './services/storageService.js';
 import { formatDate, formatDuration, formatPace, getActivityYear } from './utils/formatters.js';
 import { getActivityTimestamp, classifyWorkoutType } from './utils/activityParser.js';
 import { calcVDOT, extractVDOTMilestones, getVDOTPredictions } from './utils/vdotCalc.js';
 import { 
   calculateHeartRateDistribution, 
-  ZONE_DEFINITIONS, 
+  ZONE_DEFINITIONS,
+  computeZoneThresholds,
+  getDynamicZoneDefinitions,
+  computeZoneBenchmarkCards,
   filterActivitiesByPeriod, 
   getLatestTwoMonths 
 } from './utils/zoneCalc.js';
@@ -35,6 +39,8 @@ class AppController {
     this.currentView = 'dashboard';
     this.activeLogFilter = 'ALL';
     this.searchQuery = '';
+    this.logsCurrentPage = 1;
+    this.logsPageSize = 15;
     this.weeklyRange = '12weeks'; // '8weeks' | '12weeks' | '2026' | 'all'
     this.scheduleScope = 'current_and_next'; // 'current_and_next' | 'current_month' | 'next_month' | 'all'
     this.dashWeeklyChartInstance = null;
@@ -55,6 +61,8 @@ class AppController {
       rawCounts: {}
     };
 
+    this.runnerProfile = storageService.getRunnerProfile();
+
     this.dom = {
       sidebar: document.getElementById('appSidebar'),
       sidebarToggle: document.getElementById('btnSidebarToggle'),
@@ -65,8 +73,25 @@ class AppController {
       contentLoader: document.getElementById('contentLoader'),
       dataSourceStatus: document.getElementById('dataSourceStatus'),
       btnRefreshData: document.getElementById('btnRefreshData'),
+      toastContainer: document.getElementById('toastContainer'),
       systemAlertContainer: document.getElementById('systemAlertContainer'),
+      sidebarAthleteName: document.getElementById('sidebarAthleteName'),
       sidebarVdotBadge: document.getElementById('sidebarVdotBadge'),
+      sidebarLthrBadge: document.getElementById('sidebarLthrBadge'),
+      btnOpenSettingsSidebar: document.getElementById('btnOpenSettingsSidebar'),
+      btnOpenSettingsHeader: document.getElementById('btnOpenSettingsHeader'),
+      runnerSettingsModal: document.getElementById('runnerSettingsModal'),
+      btnCloseSettingsModal: document.getElementById('btnCloseSettingsModal'),
+      btnCancelSettings: document.getElementById('btnCancelSettings'),
+      btnResetSettings: document.getElementById('btnResetSettings'),
+      runnerSettingsForm: document.getElementById('runnerSettingsForm'),
+      inputRunnerName: document.getElementById('inputRunnerName'),
+      inputRunnerVdot: document.getElementById('inputRunnerVdot'),
+      inputRunnerLthr: document.getElementById('inputRunnerLthr'),
+      inputRunnerMaxHr: document.getElementById('inputRunnerMaxHr'),
+      previewBadgesGrid: document.getElementById('previewBadgesGrid'),
+      settingsAlertContainer: document.getElementById('settingsAlertContainer'),
+      vdotPaceHint: document.getElementById('vdotPaceHint'),
       lapSplitsModal: document.getElementById('lapSplitsModal'),
       modalTitle: document.getElementById('modalActivityTitle'),
       modalMeta: document.getElementById('modalActivityMeta'),
@@ -81,8 +106,11 @@ class AppController {
    */
   async init() {
     console.info('[App] Runner Pulse Analytics 初始化中...');
+    window.showToast = (msg, type, duration) => this.showToast(msg, type, duration);
+    this.updateAthleteSidebar();
     this.bindEvents();
     this.initModalEvents();
+    this.initSettingsModalEvents();
     await this.loadApplicationData(false);
   }
 
@@ -116,6 +144,7 @@ class AppController {
 
     if (this.dom.btnRefreshData) {
       this.dom.btnRefreshData.addEventListener('click', async () => {
+        this.showToast('正在向 Google Sheets 請求最新訓練數據...', 'info', 2000);
         await this.loadApplicationData(true);
       });
     }
@@ -148,6 +177,200 @@ class AppController {
         closeModal();
       }
     });
+  }
+
+  /**
+   * 更新側邊欄與頁首之跑者個人化資訊標籤
+   */
+  updateAthleteSidebar() {
+    if (this.dom.sidebarAthleteName) {
+      this.dom.sidebarAthleteName.textContent = this.runnerProfile.name || 'Tobby Runner';
+    }
+    if (this.dom.sidebarVdotBadge) {
+      this.dom.sidebarVdotBadge.textContent = Number(this.runnerProfile.vdot).toFixed(1);
+    }
+    if (this.dom.sidebarLthrBadge) {
+      this.dom.sidebarLthrBadge.textContent = this.runnerProfile.lthr;
+    }
+  }
+
+  /**
+   * 綁定跑者生理基準設定彈窗事件 (Task T-EXT-01)
+   */
+  initSettingsModalEvents() {
+    const openModal = () => {
+      if (!this.dom.runnerSettingsModal) return;
+      if (this.dom.inputRunnerName) this.dom.inputRunnerName.value = this.runnerProfile.name || '';
+      if (this.dom.inputRunnerVdot) this.dom.inputRunnerVdot.value = this.runnerProfile.vdot || 36.0;
+      if (this.dom.inputRunnerLthr) this.dom.inputRunnerLthr.value = this.runnerProfile.lthr || 172;
+      if (this.dom.inputRunnerMaxHr) this.dom.inputRunnerMaxHr.value = this.runnerProfile.maxHr || 196;
+      if (this.dom.settingsAlertContainer) {
+        this.dom.settingsAlertContainer.innerHTML = '';
+      }
+      this.updateSettingsPreview();
+      this.dom.runnerSettingsModal.classList.add('open');
+      if (this.dom.inputRunnerName) this.dom.inputRunnerName.focus();
+    };
+
+    const closeModal = () => {
+      if (this.dom.runnerSettingsModal) {
+        this.dom.runnerSettingsModal.classList.remove('open');
+      }
+    };
+
+    if (this.dom.btnOpenSettingsSidebar) {
+      this.dom.btnOpenSettingsSidebar.addEventListener('click', openModal);
+    }
+    if (this.dom.btnOpenSettingsHeader) {
+      this.dom.btnOpenSettingsHeader.addEventListener('click', openModal);
+    }
+    if (this.dom.btnCloseSettingsModal) {
+      this.dom.btnCloseSettingsModal.addEventListener('click', closeModal);
+    }
+    if (this.dom.btnCancelSettings) {
+      this.dom.btnCancelSettings.addEventListener('click', closeModal);
+    }
+
+    if (this.dom.runnerSettingsModal) {
+      this.dom.runnerSettingsModal.addEventListener('click', (e) => {
+        if (e.target === this.dom.runnerSettingsModal) closeModal();
+      });
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.dom.runnerSettingsModal?.classList.contains('open')) {
+        closeModal();
+      }
+    });
+
+    // 即時預覽計算監聽 (Input events)
+    ['inputRunnerVdot', 'inputRunnerLthr', 'inputRunnerMaxHr'].forEach(id => {
+      const el = this.dom[id];
+      if (el) {
+        el.addEventListener('input', () => this.updateSettingsPreview());
+      }
+    });
+
+    // 恢復預設值按鈕
+    if (this.dom.btnResetSettings) {
+      this.dom.btnResetSettings.addEventListener('click', () => {
+        const def = storageService.resetRunnerProfile();
+        if (this.dom.inputRunnerName) this.dom.inputRunnerName.value = def.name;
+        if (this.dom.inputRunnerVdot) this.dom.inputRunnerVdot.value = def.vdot;
+        if (this.dom.inputRunnerLthr) this.dom.inputRunnerLthr.value = def.lthr;
+        if (this.dom.inputRunnerMaxHr) this.dom.inputRunnerMaxHr.value = def.maxHr;
+        this.updateSettingsPreview();
+        this.showSettingsAlert('已恢復系統預設值（尚未儲存，請點擊「儲存生理設定」按鈕生效）。', 'info');
+      });
+    }
+
+    // 表單提交處理
+    if (this.dom.runnerSettingsForm) {
+      this.dom.runnerSettingsForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        this.handleSettingsSubmit();
+      });
+    }
+  }
+
+  /**
+   * 即時計算生理區間預覽
+   */
+  updateSettingsPreview() {
+    const vdotVal = parseFloat(this.dom.inputRunnerVdot?.value) || 36.0;
+    const lthrVal = parseInt(this.dom.inputRunnerLthr?.value, 10) || 172;
+    const maxHrVal = parseInt(this.dom.inputRunnerMaxHr?.value, 10) || 196;
+
+    // 更新 VDOT 預估 5K 配速提示
+    if (this.dom.vdotPaceHint) {
+      const pred = getVDOTPredictions(vdotVal);
+      const pred5k = pred.racePredictions.find(p => p.event.includes('5K'));
+      if (pred5k) {
+        this.dom.vdotPaceHint.textContent = `推估 5K: ${pred5k.finishTime} (${pred5k.avgPace}/km)`;
+      }
+    }
+
+    // 更新五大心率區間 Badge 預覽
+    if (this.dom.previewBadgesGrid) {
+      const defs = getDynamicZoneDefinitions({ lthr: lthrVal, maxHr: maxHrVal });
+      this.dom.previewBadgesGrid.innerHTML = defs.map(d => `
+        <div class="preview-zone-item" style="border-top: 2px solid ${d.color};">
+          <div class="preview-zone-name" style="color: ${d.color};">${d.shortName}</div>
+          <div class="preview-zone-range">${d.hrRange}</div>
+          <div class="preview-zone-pct">${d.pctLTHR}</div>
+        </div>
+      `).join('');
+    }
+  }
+
+  /**
+   * 顯示設定彈窗專屬警示
+   */
+  showSettingsAlert(msg, type = 'danger') {
+    if (!this.dom.settingsAlertContainer) return;
+    this.dom.settingsAlertContainer.innerHTML = `
+      <div class="alert alert-${type}" style="padding: 0.5rem 0.85rem; font-size: 0.82rem; margin-bottom: 0.75rem;">
+        ${msg}
+      </div>
+    `;
+  }
+
+  /**
+   * 處理生理設定表單儲存
+   */
+  handleSettingsSubmit() {
+    const name = String(this.dom.inputRunnerName?.value || '').trim();
+    const vdot = parseFloat(this.dom.inputRunnerVdot?.value);
+    const lthr = parseInt(this.dom.inputRunnerLthr?.value, 10);
+    const maxHr = parseInt(this.dom.inputRunnerMaxHr?.value, 10);
+
+    // 商業邏輯檢核 (Validation Rules)
+    if (!name) {
+      this.showSettingsAlert('請填寫跑者姓名或代號！');
+      if (this.dom.inputRunnerName) this.dom.inputRunnerName.focus();
+      return;
+    }
+    if (isNaN(vdot) || vdot < 20 || vdot > 85) {
+      this.showSettingsAlert('VDOT 跑力範圍必須介於 20.0 ~ 85.0 之間！');
+      if (this.dom.inputRunnerVdot) this.dom.inputRunnerVdot.focus();
+      return;
+    }
+    if (isNaN(lthr) || lthr < 100 || lthr > 220) {
+      this.showSettingsAlert('乳酸門檻心率 (LTHR) 範圍必須介於 100 ~ 220 bpm 之間！');
+      if (this.dom.inputRunnerLthr) this.dom.inputRunnerLthr.focus();
+      return;
+    }
+    if (isNaN(maxHr) || maxHr < 120 || maxHr > 240) {
+      this.showSettingsAlert('最大心率 (Max HR) 範圍必須介於 120 ~ 240 bpm 之間！');
+      if (this.dom.inputRunnerMaxHr) this.dom.inputRunnerMaxHr.focus();
+      return;
+    }
+    if (maxHr <= lthr) {
+      this.showSettingsAlert(`最大心率 (${maxHr} bpm) 必須大於乳酸門檻心率 (${lthr} bpm)！`);
+      if (this.dom.inputRunnerMaxHr) this.dom.inputRunnerMaxHr.focus();
+      return;
+    }
+
+    const newProfile = { name, vdot, lthr, maxHr };
+    const saved = storageService.saveRunnerProfile(newProfile);
+    if (!saved) {
+      this.showSettingsAlert('儲存至本機快取時發生錯誤，請檢查瀏覽器設定！');
+      return;
+    }
+
+    this.runnerProfile = newProfile;
+    this.updateAthleteSidebar();
+
+    // 關閉 Modal
+    if (this.dom.runnerSettingsModal) {
+      this.dom.runnerSettingsModal.classList.remove('open');
+    }
+
+    // 全站提示成功訊息
+    this.showAlert(`🎉 跑者生理基準已成功更新！ (VDOT: ${vdot.toFixed(1)}, LTHR: ${lthr} bpm, Max HR: ${maxHr} bpm)，全站數據已即時重算。`, 'success');
+
+    // 即時重繪當前頁籤
+    this.renderCurrentView();
   }
 
   /**
@@ -218,7 +441,7 @@ class AppController {
         let cumulativeSeconds = 0;
         const splitsHtml = splits.map((s, idx) => {
           cumulativeSeconds += (s.paceSec || 0);
-          const isHighHR = s.hr >= APP_CONFIG.ATHLETE.lthr;
+          const isHighHR = s.hr >= this.runnerProfile.lthr;
           const pz = s.paceZone || { label: 'E 輕鬆配速', badgeClass: 'badge-easy' };
           
           let deltaHtml = '';
@@ -271,7 +494,7 @@ class AppController {
         let tableCumSec = 0;
         const tableRowsHtml = splits.map((s, idx) => {
           tableCumSec += (s.paceSec || 0);
-          const isHighHR = s.hr >= APP_CONFIG.ATHLETE.lthr;
+          const isHighHR = s.hr >= this.runnerProfile.lthr;
           const pz = s.paceZone || { label: 'E 輕鬆配速', badgeClass: 'badge-easy' };
           
           let deltaText = '-';
@@ -314,7 +537,7 @@ class AppController {
             <div class="splits-kpi-item">
               <span class="splits-kpi-label">❤️ 分段心率表現</span>
               <span class="splits-kpi-val" style="color:var(--accent-lime);">${avgHr} <small style="font-size:0.75rem;color:var(--text-muted)">bpm (均)</small></span>
-              <span class="splits-kpi-sub">最高心率: ${maxHr} bpm ${maxHr >= APP_CONFIG.ATHLETE.lthr ? '🔥' : ''}</span>
+              <span class="splits-kpi-sub">最高心率: ${maxHr} bpm ${maxHr >= this.runnerProfile.lthr ? '🔥' : ''}</span>
             </div>
             <div class="splits-kpi-item">
               <span class="splits-kpi-label">🎯 配速控管策略</span>
@@ -423,8 +646,8 @@ class AppController {
         );
       } else if (result.status === DataSourceStatus.LIVE) {
         this.showAlert(
-          `🎉 <strong>Google Sheets 資料同步成功</strong>！訓練日誌共載入 <strong>${result.logs.length}</strong> 筆活動 (已依最新日期向前排列)。`,
-          'info'
+          `🎉 <strong>Google Sheets 雲端連線成功</strong>！訓練日誌共載入 <strong>${result.logs.length}</strong> 筆活動 (已依最新日期向前排列)。`,
+          'success'
         );
       } else {
         this.clearAlert();
@@ -530,6 +753,9 @@ class AppController {
     const weeklyData = aggregateWeeklyVolume(logs, this.weeklyRange);
     const workoutTypeStats = calculateWorkoutTypeBreakdown(logs, 2026);
 
+    // 計算 Task T-EXT-03: 五大心率/配速區間基準卡 (Zone Benchmark Cards)
+    const benchmarkCards = computeZoneBenchmarkCards(this.runnerProfile);
+
     const html = `
       <!-- Hero 決戰測驗倒數模組 (完全動態連動 Google Sheets 課表) -->
       <section class="hero-countdown-card">
@@ -554,8 +780,8 @@ class AppController {
       <section class="grid-stats">
         <div class="stat-card">
           <div class="stat-label">當前跑力基準 (VDOT)</div>
-          <div class="stat-value" style="color: var(--accent-cyan);">${APP_CONFIG.ATHLETE.baselineVDOT.toFixed(1)}</div>
-          <div class="stat-sub">目標 5K 配速: 4:58/km</div>
+          <div class="stat-value" style="color: var(--accent-cyan);">${this.runnerProfile.vdot.toFixed(1)}</div>
+          <div class="stat-sub">跑者: ${this.runnerProfile.name || 'Tobby'}</div>
         </div>
 
         <!-- 需求 1 優化：2026 年度跑量 (換成去年 2025 全年跑量對比，移除歷年累計) -->
@@ -567,14 +793,61 @@ class AppController {
 
         <div class="stat-card lime">
           <div class="stat-label">心率警戒監控 (LTHR)</div>
-          <div class="stat-value" style="color: var(--accent-lime);">${APP_CONFIG.ATHLETE.lthr} <span style="font-size:1.1rem;color:var(--text-muted)">bpm</span></div>
-          <div class="stat-sub">臨界心率 LTHR | Max: ${APP_CONFIG.ATHLETE.maxHR} bpm</div>
+          <div class="stat-value" style="color: var(--accent-lime);">${this.runnerProfile.lthr} <span style="font-size:1.1rem;color:var(--text-muted)">bpm</span></div>
+          <div class="stat-sub">臨界心率 LTHR | Max: ${this.runnerProfile.maxHr} bpm</div>
         </div>
 
         <div class="stat-card purple">
           <div class="stat-label">平均巡航步頻</div>
           <div class="stat-value" style="color: var(--accent-purple);">${avgCadence} <span style="font-size:1.1rem;color:var(--text-muted)">spm</span></div>
           <div class="stat-sub">全程平均心率約 ${avgHR} bpm</div>
+        </div>
+      </section>
+
+      <!-- Task T-EXT-03: 首頁五大心率/配速區間速查基準卡 (Zone Benchmark Cards) -->
+      <section class="benchmark-bar-section">
+        <div class="benchmark-bar-header">
+          <div class="benchmark-header-left">
+            <span class="benchmark-pulse-dot" title="生理模型即時運算中"></span>
+            <h3 class="benchmark-title">
+              <span>VDOT</span>
+              <span class="benchmark-vdot-pill">${this.runnerProfile.vdot.toFixed(1)}</span>
+              <span>訓練配速與心率區間速查尺</span>
+            </h3>
+            <span class="benchmark-subtitle">(生理學 %LTHR 臨界心率模型)</span>
+          </div>
+          <div class="benchmark-header-right">
+            <span class="benchmark-meta-item">
+              臨界心率 LTHR: <strong style="color:var(--accent-orange);">${this.runnerProfile.lthr}</strong> bpm
+            </span>
+            <span>&bull;</span>
+            <span class="benchmark-meta-item">
+              最大心率 Max: <strong style="color:var(--accent-danger);">${this.runnerProfile.maxHr}</strong> bpm
+            </span>
+            <button class="btn btn-outline btn-sm" id="btnBenchmarkSettings" title="自訂生理設定 (LTHR / MaxHR / VDOT)" style="padding: 0.25rem 0.65rem; font-size: 0.75rem;">
+              ⚙️ 生理設定
+            </button>
+            <button class="btn btn-ghost btn-sm" id="btnBenchmarkGoZones" title="查看完整心率區間對照表" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; color: var(--accent-cyan);">
+              深入分析 &rarr;
+            </button>
+          </div>
+        </div>
+
+        <div class="benchmark-cards-grid">
+          ${benchmarkCards.map(item => `
+            <div class="benchmark-zone-card ${item.isFeatured ? 'featured' : ''}" 
+                 style="--zone-color: ${item.color};" 
+                 data-zone-filter="${item.filterType}"
+                 title="點擊前往日誌篩選「${item.title}」相關活動">
+              <div class="benchmark-zone-top">
+                <span class="benchmark-zone-name">${item.title}</span>
+                <span class="benchmark-zone-pct">${item.pctLTHR}</span>
+              </div>
+              <div class="benchmark-zone-hr">${item.hrDisplay} <small>bpm</small></div>
+              <div class="benchmark-zone-pace">${item.paceDisplay}</div>
+              <div class="benchmark-zone-purpose">${item.purpose}</div>
+            </div>
+          `).join('')}
         </div>
       </section>
 
@@ -760,8 +1033,8 @@ class AppController {
     const vdotMilestones = extractVDOTMilestones(logs);
     this.renderDashVdotChart(vdotMilestones);
 
-    // 繪製首頁 心率強度區間環形圖 (鎖定 2026 當年度累計)
-    const hrStats2026 = calculateHeartRateDistribution(logs2026.length > 0 ? logs2026 : logs);
+    // 繪製首頁 心率強度區間環形圖 (鎖定 2026 當年度累計，連動跑者即時生理設定)
+    const hrStats2026 = calculateHeartRateDistribution(logs2026.length > 0 ? logs2026 : logs, this.runnerProfile);
     this.renderDashHrChart(hrStats2026);
 
     // 綁定週量期間切換按鈕 (Task T-10)
@@ -790,6 +1063,26 @@ class AppController {
     document.getElementById('btnGoVdot')?.addEventListener('click', () => this.switchView('vdot-analysis'));
     document.getElementById('btnGoZones')?.addEventListener('click', () => this.switchView('hr-zones'));
 
+    // 綁定五大區間基準卡點擊跳轉日誌 (Task T-EXT-03)
+    document.querySelectorAll('.benchmark-zone-card').forEach(card => {
+      card.addEventListener('click', (e) => {
+        const filterType = e.currentTarget.getAttribute('data-zone-filter');
+        if (filterType) {
+          this.activeLogFilter = filterType;
+          this.logsCurrentPage = 1;
+          this.switchView('training-logs');
+        }
+      });
+    });
+
+    document.getElementById('btnBenchmarkGoZones')?.addEventListener('click', () => {
+      this.switchView('hr-zones');
+    });
+
+    document.getElementById('btnBenchmarkSettings')?.addEventListener('click', () => {
+      this.dom.btnOpenSettingsHeader?.click();
+    });
+
     document.querySelectorAll('.btn-view-splits').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const id = e.currentTarget.getAttribute('data-id');
@@ -799,7 +1092,7 @@ class AppController {
   }
 
   /**
-   * 渲染訓練日誌清單頁 (需求 2 & 3：倒序排 + 完整 7 大標籤過濾)
+   * 渲染訓練日誌清單頁 (Task T-EXT-02: 補全 RPE/TRIMP/步幅/爬升 + 純前端高效能分頁)
    */
   renderTrainingLogsView() {
     const logs = this.data.logs || [];
@@ -823,6 +1116,16 @@ class AppController {
       return matchType && matchQuery;
     });
 
+    // 分頁計算 (Task T-EXT-02)
+    const totalCount = filteredLogs.length;
+    const totalPages = Math.max(1, Math.ceil(totalCount / this.logsPageSize));
+    if (this.logsCurrentPage > totalPages) this.logsCurrentPage = totalPages;
+    if (this.logsCurrentPage < 1) this.logsCurrentPage = 1;
+
+    const startIdx = (this.logsCurrentPage - 1) * this.logsPageSize;
+    const endIdx = Math.min(startIdx + this.logsPageSize, totalCount);
+    const paginatedLogs = filteredLogs.slice(startIdx, endIdx);
+
     // 統計各類別數量
     const counts = {
       ALL: logs.length,
@@ -836,11 +1139,11 @@ class AppController {
     };
 
     this.dom.pageContent.innerHTML = `
-      <section class="card">
+      <section class="card card-logs-table">
         <div class="card-header">
           <div>
             <h2 class="card-title">Garmin 訓練日誌總表 (${filteredLogs.length} / ${logs.length} 筆)</h2>
-            <small class="text-muted">已依最新日期向前倒序排列，支援 Jack Daniels 完整 7 大強度篩選</small>
+            <small class="text-muted">已依最新日期倒序排列，支援 Jack Daniels 完整 7 大強度篩選、RPE/TRIMP 負荷分析與流暢分頁</small>
           </div>
           <div class="search-input-wrapper" style="max-width: 280px; width: 100%;">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
@@ -864,7 +1167,6 @@ class AppController {
           <table class="data-table">
             <thead>
               <tr>
-                <th>活動 ID</th>
                 <th>日期 (新 ➔ 舊)</th>
                 <th>活動名稱</th>
                 <th>強度類型</th>
@@ -872,26 +1174,46 @@ class AppController {
                 <th>平均配速</th>
                 <th>總時間</th>
                 <th>平均心率</th>
-                <th>步頻</th>
+                <th>步頻 / 步幅</th>
+                <th>自覺強度 (RPE)</th>
+                <th>負荷 (TRIMP)</th>
+                <th>總爬升</th>
                 <th>每公里分段</th>
               </tr>
             </thead>
             <tbody>
-              ${filteredLogs.map(log => {
+              ${paginatedLogs.length === 0 ? `
+                <tr>
+                  <td colspan="12" style="text-align: center; padding: 2.5rem; color: var(--text-muted);">
+                    查無符合條件的訓練日誌紀錄
+                  </td>
+                </tr>
+              ` : paginatedLogs.map(log => {
                 const wType = log.workoutType || 'EASY';
                 const badgeClass = this._getBadgeClass(wType);
                 const splitsCount = log.lapSplits ? log.lapSplits.length : 0;
+                const isHighHr = log.hrAvg && log.hrAvg >= this.runnerProfile.lthr;
                 return `
                   <tr>
-                    <td><small class="text-muted">${log.activityId}</small></td>
                     <td><code>${formatDate(log.activityDate)}</code></td>
-                    <td><strong>${log.activityName}</strong></td>
+                    <td>
+                      <div style="display:flex; flex-direction:column;">
+                        <strong>${log.activityName}</strong>
+                        <small class="text-muted" style="font-size:0.7rem; font-family:var(--font-mono)">#${log.activityId}</small>
+                      </div>
+                    </td>
                     <td><span class="badge ${badgeClass}">${this._getWorkoutLabel(wType)}</span></td>
                     <td style="color: var(--accent-cyan); font-weight: 700;">${log.distanceKm ? log.distanceKm.toFixed(2) : '-'}</td>
                     <td><code>${log.paceAvg}</code></td>
                     <td>${log.durationTotal}</td>
-                    <td>${log.hrAvg || '-'} bpm</td>
-                    <td>${log.cadenceAvg || '-'} spm</td>
+                    <td><span style="color: ${isHighHr ? 'var(--accent-danger)' : 'var(--text-primary)'}; font-weight:600;">${log.hrAvg ? log.hrAvg + ' bpm' : '-'}</span></td>
+                    <td>
+                      <span>${log.cadenceAvg ? log.cadenceAvg + ' spm' : '-'}</span>
+                      ${log.strideLengthM ? `<br><small class="text-muted">${log.strideLengthM}m</small>` : ''}
+                    </td>
+                    <td>${this._getRpeBadge(log.rpe)}</td>
+                    <td>${this._getLoadBadge(log.trainingLoad)}</td>
+                    <td>${log.elevationGain ? log.elevationGain + ' m' : '0 m'}</td>
                     <td>
                       <button class="btn btn-outline btn-sm btn-view-splits" data-id="${log.activityId}">
                         ${splitsCount > 0 ? (log.lapSplits.some(s => s.isTimeBased) ? `⏱️ ${splitsCount}組 間歇` : `🔍 ${splitsCount}k 分段`) : '無分段'}
@@ -903,20 +1225,42 @@ class AppController {
             </tbody>
           </table>
         </div>
+
+        <!-- 分頁控制導航條 (Task T-EXT-02) -->
+        <div class="pagination-container">
+          <div class="pagination-info">
+            <span>顯示第 <strong>${totalCount > 0 ? startIdx + 1 : 0}</strong> ~ <strong>${endIdx}</strong> 筆 (本頁 <strong>${paginatedLogs.length}</strong> 筆 / 篩選 <strong>${totalCount}</strong> 筆 / 全庫 <strong>${logs.length}</strong> 筆)</span>
+            <div class="pagination-size-selector">
+              <span>每頁顯示:</span>
+              <select id="logPageSizeSelect" class="page-size-select">
+                <option value="15" ${this.logsPageSize === 15 ? 'selected' : ''}>15 筆</option>
+                <option value="25" ${this.logsPageSize === 25 ? 'selected' : ''}>25 筆</option>
+                <option value="50" ${this.logsPageSize === 50 ? 'selected' : ''}>50 筆</option>
+                <option value="100" ${this.logsPageSize === 100 ? 'selected' : ''}>100 筆</option>
+                <option value="9999" ${this.logsPageSize === 9999 ? 'selected' : ''}>全部顯示</option>
+              </select>
+            </div>
+          </div>
+          ${this._renderPaginationControls(this.logsCurrentPage, totalPages)}
+        </div>
       </section>
     `;
 
+    // 篩選標籤事件
     document.querySelectorAll('.filter-pill').forEach(btn => {
       btn.addEventListener('click', (e) => {
         this.activeLogFilter = e.currentTarget.getAttribute('data-type');
+        this.logsCurrentPage = 1; // 重設回第 1 頁
         this.renderTrainingLogsView();
       });
     });
 
+    // 搜尋輸入事件 (防抖並重設回第 1 頁)
     const searchInput = document.getElementById('logSearchInput');
     if (searchInput) {
       searchInput.addEventListener('input', (e) => {
         this.searchQuery = e.target.value;
+        this.logsCurrentPage = 1; // 搜尋條件變更回第 1 頁
         this.renderTrainingLogsView();
         const inp = document.getElementById('logSearchInput');
         if (inp) {
@@ -926,12 +1270,99 @@ class AppController {
       });
     }
 
+    // 分頁按鈕點擊事件
+    document.querySelectorAll('.page-btn[data-page]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const targetPage = parseInt(e.currentTarget.getAttribute('data-page'), 10);
+        if (!isNaN(targetPage) && targetPage >= 1 && targetPage <= totalPages && targetPage !== this.logsCurrentPage) {
+          this.logsCurrentPage = targetPage;
+          this.renderTrainingLogsView();
+          const tableCard = document.querySelector('.card-logs-table');
+          if (tableCard) {
+            tableCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }
+      });
+    });
+
+    // 每頁筆數切換事件
+    const pageSizeSelect = document.getElementById('logPageSizeSelect');
+    if (pageSizeSelect) {
+      pageSizeSelect.addEventListener('change', (e) => {
+        this.logsPageSize = parseInt(e.target.value, 10) || 15;
+        this.logsCurrentPage = 1;
+        this.renderTrainingLogsView();
+      });
+    }
+
+    // 查看分段彈窗事件
     document.querySelectorAll('.btn-view-splits').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const id = e.currentTarget.getAttribute('data-id');
         this.openLapSplitsModal(id);
       });
     });
+  }
+
+  /**
+   * 產出分頁控制器按鈕組件 HTML
+   */
+  _renderPaginationControls(currentPage, totalPages) {
+    if (totalPages <= 1) return '';
+
+    const pages = [];
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (currentPage > 3) pages.push('...');
+      const start = Math.max(2, currentPage - 1);
+      const end = Math.min(totalPages - 1, currentPage + 1);
+      for (let i = start; i <= end; i++) pages.push(i);
+      if (currentPage < totalPages - 2) pages.push('...');
+      pages.push(totalPages);
+    }
+
+    return `
+      <div class="pagination-controls">
+        <button class="page-btn" data-page="1" ${currentPage === 1 ? 'disabled' : ''} title="第一頁">&laquo;</button>
+        <button class="page-btn" data-page="${currentPage - 1}" ${currentPage === 1 ? 'disabled' : ''} title="上一頁">&lsaquo;</button>
+        ${pages.map(p => {
+          if (p === '...') return `<span class="page-ellipsis">&hellip;</span>`;
+          return `<button class="page-btn ${p === currentPage ? 'active' : ''}" data-page="${p}">${p}</button>`;
+        }).join('')}
+        <button class="page-btn" data-page="${currentPage + 1}" ${currentPage === totalPages ? 'disabled' : ''} title="下一頁">&rsaquo;</button>
+        <button class="page-btn" data-page="${totalPages}" ${currentPage === totalPages ? 'disabled' : ''} title="最後一頁">&raquo;</button>
+      </div>
+    `;
+  }
+
+  /**
+   * 取得 RPE 自覺用力程度標籤 HTML (1~10)
+   */
+  _getRpeBadge(rpe) {
+    if (rpe === null || rpe === undefined || isNaN(rpe)) {
+      return '<span class="text-muted">-</span>';
+    }
+    const val = Number(rpe);
+    let badgeClass = 'badge-rpe-low';
+    if (val >= 8) {
+      badgeClass = 'badge-rpe-high';
+    } else if (val >= 5) {
+      badgeClass = 'badge-rpe-med';
+    }
+    return `<span class="badge ${badgeClass}" title="自覺用力程度 (Borg 1~10): ${val}">RPE ${val}</span>`;
+  }
+
+  /**
+   * 取得 TRIMP 訓練衝量負荷標籤 HTML
+   */
+  _getLoadBadge(load) {
+    if (load === null || load === undefined || isNaN(load) || load <= 0) {
+      return '<span class="text-muted">-</span>';
+    }
+    const val = Math.round(Number(load) * 10) / 10;
+    return `<span class="badge badge-load" title="TRIMP 訓練點數 (心率負荷衝量)">${val}</span>`;
   }
 
   _getBadgeClass(wType) {
@@ -969,21 +1400,21 @@ class AppController {
 
     // 1. 2026 當年度整體數據
     const logs2026 = logs.filter(l => (l.activityYear || getActivityYear(l.activityDate)) === 2026);
-    const hrStatsYear = calculateHeartRateDistribution(logs2026.length > 0 ? logs2026 : logs);
+    const hrStatsYear = calculateHeartRateDistribution(logs2026.length > 0 ? logs2026 : logs, this.runnerProfile);
 
     // 2. 萃取最新兩月份資料 (例如上個月 2026-09 與這個月 2026-10)
     const { currentMonth, previousMonth } = getLatestTwoMonths(logs);
     const logsCurr = filterActivitiesByPeriod(logs, currentMonth);
     const logsPrev = filterActivitiesByPeriod(logs, previousMonth);
-    const hrStatsCurr = calculateHeartRateDistribution(logsCurr);
-    const hrStatsPrev = calculateHeartRateDistribution(logsPrev);
+    const hrStatsCurr = calculateHeartRateDistribution(logsCurr, this.runnerProfile);
+    const hrStatsPrev = calculateHeartRateDistribution(logsPrev, this.runnerProfile);
 
     this.dom.pageContent.innerHTML = `
       <!-- 4 大心率指標卡 (2026 年度體能基底) -->
       <section class="grid-stats">
         <div class="stat-card">
           <div class="stat-label">乳酸門檻心率 (LTHR)</div>
-          <div class="stat-value" style="color: var(--accent-cyan);">${APP_CONFIG.ATHLETE.lthr} <small style="font-size:1.1rem;color:var(--text-muted)">bpm</small></div>
+          <div class="stat-value" style="color: var(--accent-cyan);">${this.runnerProfile.lthr} <small style="font-size:1.1rem;color:var(--text-muted)">bpm</small></div>
           <div class="stat-sub">臨界強度基準線 (Zone 4 上限)</div>
         </div>
 
@@ -1086,10 +1517,10 @@ class AppController {
       <section class="card">
         <div class="card-header">
           <div>
-            <h2 class="card-title">跑者心率與配速訓練區間對照表 (基準: VDOT 36, LTHR: 172 bpm)</h2>
-            <small class="text-muted">依據試算表頁籤 2（訓練區間 gid=1124408140）建立，對標個人 2026 即時訓練成效</small>
+            <h2 class="card-title">跑者心率與配速訓練區間對照表 (基準: VDOT ${this.runnerProfile.vdot.toFixed(1)}, LTHR: ${this.runnerProfile.lthr} bpm)</h2>
+            <small class="text-muted">依據個人即時生理設定動態重標，對標 2026 即時訓練成效</small>
           </div>
-          <span class="badge badge-test">VDOT 36.0 Standard</span>
+          <span class="badge badge-test">VDOT ${this.runnerProfile.vdot.toFixed(1)} Standard</span>
         </div>
         <div class="data-table-container">
           <table class="data-table">
@@ -1331,7 +1762,7 @@ class AppController {
 
     // 最新測驗/賽事之 VDOT
     const latestEvent = milestones.length > 0 ? milestones[milestones.length - 1] : null;
-    const currentVDOT = latestEvent ? latestEvent.vdot : APP_CONFIG.ATHLETE.baselineVDOT;
+    const currentVDOT = latestEvent ? latestEvent.vdot : this.runnerProfile.vdot;
 
     // 歷史最高 VDOT
     const peakVDOT = milestones.reduce((max, m) => Math.max(max, m.vdot), currentVDOT);
@@ -1925,7 +2356,7 @@ class AppController {
             pointHoverRadius: 7,
             pointBackgroundColor: (context) => {
               const hr = heartRates[context.dataIndex];
-              return hr >= APP_CONFIG.ATHLETE.lthr ? '#EF4444' : '#FF6B4A';
+              return hr >= this.runnerProfile.lthr ? '#EF4444' : '#FF6B4A';
             },
             pointBorderColor: '#0A0E17',
             pointBorderWidth: 1.5,
@@ -1971,7 +2402,7 @@ class AppController {
                 if (context.datasetIndex === 0) {
                   return `配速: ${s.pace}/km (${s.paceSec} 秒/km)`;
                 } else {
-                  const isHigh = s.hr >= APP_CONFIG.ATHLETE.lthr;
+                  const isHigh = s.hr >= this.runnerProfile.lthr;
                   return `心率: ${s.hr > 0 ? s.hr + ' bpm' : '-'} ${isHigh ? '(≥ LTHR 臨界)' : ''}`;
                 }
               }
@@ -2182,17 +2613,117 @@ class AppController {
     `;
   }
 
-  showAlert(message, type = 'info') {
-    if (!this.dom.systemAlertContainer) return;
-    this.dom.systemAlertContainer.innerHTML = `
-      <div class="system-alert alert-${type}">
-        <span>${message}</span>
-        <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
+  /**
+   * 全域 Toast 輕量互動回饋機制 (Task T-EXT-07)
+   * 將原生的瀏覽器 Alert 替換為懸浮平滑的 Toast 動畫通知組件，支援 Success / Info / Warning / Danger 類型與自動倒數關閉
+   * @param {string} message 提示訊息或 HTML 字串
+   * @param {'success' | 'info' | 'warning' | 'danger' | 'error'} type 通知類型
+   * @param {number} duration 持續秒數 (毫秒，預設 4200ms，0 為不自動關閉)
+   */
+  showToast(message, type = 'info', duration = 4200) {
+    let container = document.getElementById('toastContainer');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'toastContainer';
+      container.className = 'toast-container';
+      document.body.appendChild(container);
+    }
+
+    const toast = document.createElement('div');
+    const safeType = type === 'error' ? 'danger' : type;
+    toast.className = `toast-item toast-${safeType}`;
+
+    const icons = {
+      success: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>`,
+      info: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>`,
+      warning: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>`,
+      danger: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>`
+    };
+
+    const titles = {
+      success: '執行成功',
+      info: '系統提示',
+      warning: '注意提醒',
+      danger: '連線或處理異常'
+    };
+
+    const iconHtml = icons[safeType] || icons.info;
+    const titleText = titles[safeType] || '系統通知';
+
+    toast.innerHTML = `
+      <div class="toast-icon">${iconHtml}</div>
+      <div class="toast-content">
+        <div class="toast-title">${titleText}</div>
+        <div class="toast-message">${message}</div>
       </div>
+      <button class="toast-close" title="關閉通知" aria-label="關閉">&times;</button>
+      ${duration > 0 ? `<div class="toast-progress" style="animation-duration: ${duration}ms;"></div>` : ''}
     `;
+
+    container.appendChild(toast);
+
+    // 平滑進入動畫
+    requestAnimationFrame(() => {
+      toast.classList.add('toast-show');
+    });
+
+    let dismissTimer = null;
+    let isDismissed = false;
+
+    const dismiss = () => {
+      if (isDismissed) return;
+      isDismissed = true;
+      if (dismissTimer) clearTimeout(dismissTimer);
+      toast.classList.remove('toast-show');
+      toast.classList.add('toast-hide');
+      setTimeout(() => {
+        toast.remove();
+      }, 350);
+    };
+
+    // 關閉按鈕點擊
+    const closeBtn = toast.querySelector('.toast-close');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dismiss();
+      });
+    }
+
+    // 自動關閉定時器
+    if (duration > 0) {
+      dismissTimer = setTimeout(dismiss, duration);
+
+      // 滑鼠懸停暫停倒數
+      toast.addEventListener('mouseenter', () => {
+        if (dismissTimer) clearTimeout(dismissTimer);
+      });
+      toast.addEventListener('mouseleave', () => {
+        if (!isDismissed) {
+          dismissTimer = setTimeout(dismiss, 1200);
+        }
+      });
+    }
+
+    return toast;
+  }
+
+  /**
+   * 向後相容 showAlert 呼叫，全面升級為懸浮 Toast
+   */
+  showAlert(message, type = 'info', duration = 4500) {
+    return this.showToast(message, type, duration);
   }
 
   clearAlert() {
+    const container = document.getElementById('toastContainer');
+    if (container) {
+      container.querySelectorAll('.toast-item').forEach(item => {
+        item.classList.remove('toast-show');
+        item.classList.add('toast-hide');
+        setTimeout(() => item.remove(), 350);
+      });
+    }
     if (this.dom.systemAlertContainer) {
       this.dom.systemAlertContainer.innerHTML = '';
     }

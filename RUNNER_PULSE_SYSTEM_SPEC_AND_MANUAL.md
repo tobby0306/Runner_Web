@@ -201,8 +201,7 @@ sequenceDiagram
 ```
 c:\Antigravity_WS\Runner_Web\
 ├── index.html                      # 主應用程式 SPA 入口骨架與導覽列
-├── running_analyzer_spec.md        # 原始需求規格書
-├── RUNNER_PULSE_SYSTEM_SPEC_AND_MANUAL.md # 本架構手冊
+├── RUNNER_PULSE_SYSTEM_SPEC_AND_MANUAL.md # 系統規格與維護開發手冊 (v2.2)
 ├── README.md                       # 專案快速啟動說明
 ├── serve.py                        # 本機開發 HTTP 伺服器與 Google Sheets 反向代理
 ├── start.bat                       # 一鍵啟動批次檔

@@ -26,7 +26,7 @@ Runner_Web/
 │       └── mockData.js         # 規格書 3 大頁籤 (日誌/區間/課表) 高擬真測試數據
 ├── index.html                  # 主 SPA 入口頁面 (引進 Google Fonts 與 Chart.js v4)
 ├── serve.py                    # 本地輕量開發伺服器啟動器 (Python 3.12)
-├── running_analyzer_spec.md    # 系統規格書
+├── RUNNER_PULSE_SYSTEM_SPEC_AND_MANUAL.md # 系統規格與維護開發手冊 (v2.2)
 └── README.md                   # 專案說明文件
 ```
 

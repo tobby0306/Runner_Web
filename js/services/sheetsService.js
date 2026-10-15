@@ -20,6 +20,7 @@ export const DataSourceStatus = {
 class SheetsService {
   constructor() {
     this.sheetId = APP_CONFIG.SPREADSHEET_ID;
+    this.publishedId = APP_CONFIG.PUBLISHED_ID;
     this.tabs = APP_CONFIG.TABS;
     this.currentStatus = DataSourceStatus.LOADING;
     this.lastSyncTime = null;
@@ -58,7 +59,24 @@ class SheetsService {
       }
     }
 
-    // 策略 2: 嘗試直連 Google Sheets「發布到網路」(pub?output=csv) 端點 (官方支援 CORS 跨來源存取)
+    // 策略 2: 直連 Google Sheets「發布到網路」官方公開端點 (/d/e/{publishedId}/pub?output=csv&gid=...)
+    // 此端點 Google 官方原生支援 CORS (Access-Control-Allow-Origin: *)，無須任何代理伺服器
+    if (!csvText && this.publishedId) {
+      const pubUrl = `https://docs.google.com/spreadsheets/d/e/${this.publishedId}/pub?output=csv&gid=${gidStr}`;
+      try {
+        const resp = await fetch(pubUrl, { method: 'GET' });
+        if (resp.ok) {
+          const txt = await resp.text();
+          if (txt && !txt.includes('<!DOCTYPE html>') && !txt.includes('ServiceLogin') && txt.length > 50) {
+            csvText = txt;
+          }
+        }
+      } catch {
+        // 靜默嘗試下一管道
+      }
+    }
+
+    // 策略 3: 直連原始 sheetId 之 pub?output=csv 端點
     if (!csvText) {
       const pubUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/pub?output=csv&gid=${gidStr}`;
       try {

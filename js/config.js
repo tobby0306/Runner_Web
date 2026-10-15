@@ -7,6 +7,9 @@ export const APP_CONFIG = {
   // Google Sheets ID
   SPREADSHEET_ID: '1DahiYbLvl4zR6-5EABCSwTATCtkP7N3IywSxWo5JKas',
 
+  // Google Sheets 發布到網路之唯一公開識別碼 (官方支援 CORS 跨來源存取)
+  PUBLISHED_ID: '2PACX-1vRWTBzIVn5aVBDYHIzmkBbI0E-Vok36PDANTne_S8U00vpPZCx6kDEzBq0iWLgZ2VIDg5Y20CgsCOod',
+
   // 頁籤 GID 對照表 (依據規格書 Section 12 & 13)
   TABS: {
     LOGS: {
@@ -29,9 +32,9 @@ export const APP_CONFIG = {
     }
   },
 
-  // 快取設定 (變更版本前綴 runner_pulse_v6_ 以精確辨識目標賽事測驗)
+  // 快取設定 (升級版本前綴 runner_pulse_v7_ 清空舊快取並立即載入已發布試算表)
   CACHE: {
-    PREFIX: 'runner_pulse_v6_',
+    PREFIX: 'runner_pulse_v7_',
     TTL_MS: 60 * 60 * 1000, // 1 hour
     KEYS: {
       LOGS: 'logs_data',

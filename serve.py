@@ -14,6 +14,7 @@ import os
 PORT = 3000
 DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 SPREADSHEET_ID = '1DahiYbLvl4zR6-5EABCSwTATCtkP7N3IywSxWo5JKas'
+PUBLISHED_ID = '2PACX-1vRWTBzIVn5aVBDYHIzmkBbI0E-Vok36PDANTne_S8U00vpPZCx6kDEzBq0iWLgZ2VIDg5Y20CgsCOod'
 
 # 後端記憶體快取 (TTL: 1 小時)
 API_CACHE = {}
@@ -78,32 +79,44 @@ class RunnerHttpHandler(http.server.SimpleHTTPRequestHandler):
                 self._send_csv_response(cached_data, from_cache=True)
                 return
 
-        # 發送後端請求至 Google Sheets
-        remote_url = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/export?format=csv&gid={gid}"
-        try:
-            req = urllib.request.Request(
-                remote_url,
-                headers={
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) RunnerPulseAnalytics/1.0'
-                }
-            )
-            with urllib.request.urlopen(req, timeout=12) as response:
-                if response.status != 200:
-                    self._send_json_error(502, "UPSTREAM_ERROR", f"Google Sheets 回應狀態碼非 200: {response.status}")
-                    return
-                raw_bytes = response.read()
+        # 發送後端請求至 Google Sheets (優先嘗試發布到網路端點，次試 export 端點)
+        urls_to_try = [
+            f"https://docs.google.com/spreadsheets/d/e/{PUBLISHED_ID}/pub?output=csv&gid={gid}",
+            f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/export?format=csv&gid={gid}"
+        ]
 
-            # 寫入快取
-            API_CACHE[gid] = (raw_bytes, now)
-            self._send_csv_response(raw_bytes, from_cache=False)
+        last_error = None
+        raw_bytes = None
 
-        except Exception as e:
+        for remote_url in urls_to_try:
+            try:
+                req = urllib.request.Request(
+                    remote_url,
+                    headers={
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) RunnerPulseAnalytics/1.0'
+                    }
+                )
+                with urllib.request.urlopen(req, timeout=8) as response:
+                    if response.status == 200:
+                        raw = response.read()
+                        if raw and b'<!DOCTYPE html>' not in raw and len(raw) > 50:
+                            raw_bytes = raw
+                            break
+            except Exception as e:
+                last_error = e
+
+        if raw_bytes is None:
             # 發生例外時檢查過期快取作為 fallback
             if gid in API_CACHE:
                 cached_data, _ = API_CACHE[gid]
                 self._send_csv_response(cached_data, from_cache=True)
                 return
-            self._send_json_error(502, "UPSTREAM_CONNECTION_FAILED", f"連線 Google Sheets 失敗: {str(e)}")
+            self._send_json_error(502, "UPSTREAM_CONNECTION_FAILED", f"連線 Google Sheets 失敗: {str(last_error)}")
+            return
+
+        # 寫入快取
+        API_CACHE[gid] = (raw_bytes, now)
+        self._send_csv_response(raw_bytes, from_cache=False)
 
     def _send_csv_response(self, data_bytes, from_cache=False):
         self.send_response(200)

@@ -344,20 +344,26 @@ VDOT 是世界著名跑步教練 Jack Daniels 發明的跑力指數。系統自�
 ### 模組 5：心率五大強度區間分佈與月度演變分析 (Task T-09)
 
 #### 1. 業務場景與目的
-對照跑者的生理基準（最大心率 196 bpm，臨界心率 LTHR 172 bpm），將所有歷史日誌的心率劃分至 Zone 1～Zone 5，並進行「最近兩個月份」的心率佔比比較，直觀展示跑者的心肺能力是否有向低心率有氧位移。
+對照跑者的生理雙基準（最大心率 Max HR 196 bpm，臨界心率 LTHR 172 bpm），將所有歷史日誌的心率劃分至 Zone 1～Zone 5，並進行「最近兩個月份」的心率佔比比較，直觀展示跑者的心肺能力是否有向低心率有氧位移。
+系統同時提供 LTHR 換算推導公式（$\text{LTHR } 172 = \text{Max HR } 196 \times 87.8\%$）與試算表雙表深度融合（建議配速、%LTHR、%Max HR、RPE 體感指標與實戰指令）。
 
-#### 2. 區間定義標準 (依試算表頁籤 2 基準)
-- **Zone 1 (恢復跑)**：`112 ~ 137 bpm` (65% ~ 80% LTHR)
-- **Zone 2 (輕鬆跑 E)**：`138 ~ 153 bpm` (80% ~ 89% LTHR)
-- **Zone 3 (馬拉松 M)**：`154 ~ 163 bpm` (89% ~ 95% LTHR)
-- **Zone 4 (乳酸門檻 T)**：`164 ~ 172 bpm` (95% ~ 100% LTHR)
-- **Zone 5 (最大攝氧/速度 I/R)**：`173 ~ 196 bpm` (> 100% LTHR)
+#### 2. 區間定義標準 (依試算表頁籤 2 雙表整合基準)
+- **Zone 1 (恢復跑)**：`112 ~ 137 bpm` (65% ~ 80% LTHR，57% ~ 70% Max HR，配速 `> 7:10`)，RPE 1-2 (極輕鬆，呼吸 3-3)，主動修復與乳酸清除。
+- **Zone 2 (輕鬆跑 E)**：`138 ~ 153 bpm` (80% ~ 89% LTHR，70% ~ 78% Max HR，配速 `6:25 ~ 7:09`)，RPE 3 (輕鬆，呼吸 3-3，能說完整長句)，核心以 140-148 bpm 增生微血管與粒線體。
+- **Zone 3 (馬拉松 M)**：`154 ~ 163 bpm` (89% ~ 95% LTHR，78% ~ 83% Max HR，配速 `6:01`)，RPE 4 (開始吃力，呼吸 2-2)，模擬馬拉松巡航賽速。
+- **Zone 4 (乳酸門檻 T)**：`164 ~ 172 bpm` (95% ~ 100% LTHR，84% ~ 88% Max HR，配速 `5:29`)，RPE 5-6 (舒適的艱難，呼吸 2-2)，週二 T 跑嚴禁衝破 172 bpm 天花板。
+- **Zone 5 (最大攝氧/速度 I/R)**：`173 ~ 196 bpm` (> 100% LTHR，88% ~ 100% Max HR，配速 `4:48 ~ 5:04`)，RPE 7-10 (極度吃力，呼吸 2-1)，刺激 VO2Max 與短距離速度經濟性。
 
 #### 3. 核心方法與程式碼對照
 - **檔案路徑**：[js/utils/zoneCalc.js](file:///c:/Antigravity_WS/Runner_Web/js/utils/zoneCalc.js)
-  - `calculateHeartRateDistribution(activities)`：行 [L40-L95](file:///c:/Antigravity_WS/Runner_Web/js/utils/zoneCalc.js#L40-L95)，統計 5 區間活動次數、里程與佔比。
-  - `getLatestTwoMonths(activities)`：行 [L125-L165](file:///c:/Antigravity_WS/Runner_Web/js/utils/zoneCalc.js#L125-L165)，自動萃取最新兩月份供月度對比。
-- **視圖繪製**：[js/app.js](file:///c:/Antigravity_WS/Runner_Web/js/app.js#L1080-L1250) `renderZonesView()`，包含甜甜圈環形圖與並排雙月柱狀圖。
+  - `computeZoneThresholds(lthr, maxHr)`：依跑者雙基準動態計算 Z1~Z5 閥值。
+  - `calculateHeartRateDistribution(activities, profile)`：統計 5 大區間活動次數、里程與佔比。
+  - `getLatestTwoMonths(activities)`：自動萃取最新兩月份供月度對比。
+- **視圖繪製**：[js/app.js](file:///c:/Antigravity_WS/Runner_Web/js/app.js) `renderZonesView()`，包含：
+  - 頂部 **生理心率雙基準指標卡**（LTHR 172 bpm / Max HR 196 bpm 與 87.8% 換算提示）。
+  - **臨界心率 (LTHR) 運動生理學推導原理說明方塊**。
+  - **月度雙圓餅圖** 與 **全年各區間里程長條圖**。
+  - 雙表整合之 **跑者心率與配速訓練區間對照表**（含 Zone 1~5b、建議配速、%LTHR、%Max HR、RPE 體感、呼吸節奏、2026 累積里程、實戰指令）。
 
 ---
 

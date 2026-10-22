@@ -303,27 +303,76 @@ class SheetsService {
 
   _transformRawZones(rawRows) {
     if (!rawRows || rawRows.length < 4) return MOCK_DATA.trainingZones;
-    const zones = [];
-    
-    // 依據試算表實際結構: Row 2 為標題，Row 3~8 為 Zone 1 ~ 5b
-    for (let i = 3; i < Math.min(rawRows.length, 9); i++) {
+    const defaults = MOCK_DATA.trainingZones;
+
+    // 嘗試從試算表下半部 (Table 2: 實戰心率區間對照表) 萃取 RPE、實戰指令與 %LTHR
+    const table2Map = {};
+    for (let i = 12; i < rawRows.length; i++) {
       const row = rawRows[i];
-      if (!row || row.length < 3 || !row[0]) continue;
+      if (!row || !row[0]) continue;
+      const cell0 = String(row[0]).trim();
+      const zMatch = cell0.match(/^Zone\s*([0-9]+[a-z]?)/i);
+      if (zMatch) {
+        const key = `Zone ${zMatch[1]}`;
+        // 尋找哪一欄包含 RPE，哪一欄是說明
+        let rpeText = '';
+        let tacticsText = '';
+        for (let colIdx = 1; colIdx < row.length; colIdx++) {
+          const val = String(row[colIdx] || '').trim();
+          if (val.toUpperCase().includes('RPE')) {
+            rpeText = val;
+          } else if (val.length > 10 && !val.includes('%') && !val.includes('bpm')) {
+            tacticsText = val;
+          }
+        }
+        table2Map[key] = {
+          pctLTHR: row[1] ? String(row[1]).trim() : '',
+          hrTarget: row[2] ? String(row[2]).trim() : '',
+          tactics: tacticsText,
+          rpe: rpeText
+        };
+      }
+    }
+
+    const zones = [];
+    // 依據試算表實際結構: Row 2 為標題，Row 3~9 為 Zone 1 ~ 5b
+    for (let i = 3; i < Math.min(rawRows.length, 11); i++) {
+      const row = rawRows[i];
+      if (!row || row.length < 2 || !row[0]) continue;
       const zoneName = row[0].trim();
+      if (!zoneName.toLowerCase().startsWith('zone')) continue;
+
       const paceGuide = row[1] ? row[1].trim() : '';
       const hrTarget = row[2] ? row[2].trim() : '';
       const purpose = row[3] ? row[3].trim() : '';
 
+      // 精準萃取 Zone 編號 (例如 Zone 1, Zone 2, Zone 5a, Zone 5b)
+      const zoneMatch = zoneName.match(/^Zone\s*([0-9]+[a-z]?)/i);
+      let zoneTag = zoneMatch ? `Zone ${zoneMatch[1]}` : zoneName.split(' ').slice(0, 2).join(' ');
+      if (zoneTag.toLowerCase() === 'zone 5' && zones.some(z => z.zone.startsWith('Zone 5'))) {
+        zoneTag = 'Zone 5b';
+      } else if (zoneTag.toLowerCase() === 'zone 5') {
+        zoneTag = 'Zone 5a';
+      }
+
+      const defaultMeta = defaults.find(d => d.zone === zoneTag || d.name.includes(zoneTag)) || {};
+      const t2 = table2Map[zoneTag.replace(/[ab]$/i, '')] || table2Map[zoneTag] || {};
+
       zones.push({
-        zone: zoneName.split(' ')[0] || `Zone ${i-2}`,
+        zone: zoneTag,
         name: zoneName,
-        paceGuide,
-        hrTarget,
-        pctLTHR: zoneName.includes('Zone 1') ? '65%–80%' : 
-                 zoneName.includes('Zone 2') ? '80%–89%' : 
-                 zoneName.includes('Zone 3') ? '89%–95%' : 
-                 zoneName.includes('Zone 4') ? '95%–100%' : '>100%',
-        purpose
+        paceGuide: paceGuide || defaultMeta.paceGuide || '',
+        hrTarget: hrTarget || t2.hrTarget || defaultMeta.hrTarget || '',
+        pctLTHR: t2.pctLTHR || defaultMeta.pctLTHR || (
+          zoneTag === 'Zone 1' ? '65%–80%' : 
+          zoneTag === 'Zone 2' ? '80%–89%' : 
+          zoneTag === 'Zone 3' ? '89%–95%' : 
+          zoneTag === 'Zone 4' ? '95%–100%' : '> 100%'
+        ),
+        pctMaxHR: defaultMeta.pctMaxHR || '',
+        rpe: t2.rpe || defaultMeta.rpe || '',
+        tactics: t2.tactics || defaultMeta.tactics || '',
+        purpose: purpose || defaultMeta.purpose || ''
       });
     }
 

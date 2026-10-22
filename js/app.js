@@ -906,9 +906,9 @@ class AppController {
         </div>
 
         <div class="stat-card lime">
-          <div class="stat-label">心率警戒監控 (LTHR)</div>
+          <div class="stat-label">心率警戒監控 (LTHR / Max)</div>
           <div class="stat-value" style="color: var(--accent-lime);">${this.runnerProfile.lthr} <span style="font-size:1.1rem;color:var(--text-muted)">bpm</span></div>
-          <div class="stat-sub">臨界心率 LTHR | Max: ${this.runnerProfile.maxHr} bpm</div>
+          <div class="stat-sub">臨界 LTHR (佔 Max ${Math.round((this.runnerProfile.lthr / this.runnerProfile.maxHr) * 1000) / 10}%) | Max: ${this.runnerProfile.maxHr} bpm</div>
         </div>
 
         <div class="stat-card purple">
@@ -933,6 +933,7 @@ class AppController {
           <div class="benchmark-header-right">
             <span class="benchmark-meta-item">
               臨界心率 LTHR: <strong style="color:var(--accent-orange);">${this.runnerProfile.lthr}</strong> bpm
+              <small style="color:var(--text-muted);font-size:0.75rem;">(${Math.round((this.runnerProfile.lthr / this.runnerProfile.maxHr) * 1000) / 10}% Max)</small>
             </span>
             <span>&bull;</span>
             <span class="benchmark-meta-item">
@@ -1523,13 +1524,25 @@ class AppController {
     const hrStatsCurr = calculateHeartRateDistribution(logsCurr, this.runnerProfile);
     const hrStatsPrev = calculateHeartRateDistribution(logsPrev, this.runnerProfile);
 
+    // 3. 計算 LTHR 佔最大心率之精準百分比與推導模型
+    const lthrPctOfMax = Math.round((this.runnerProfile.lthr / this.runnerProfile.maxHr) * 1000) / 10;
+
     this.dom.pageContent.innerHTML = `
       <!-- 4 大心率指標卡 (2026 年度體能基底) -->
       <section class="grid-stats">
         <div class="stat-card">
-          <div class="stat-label">乳酸門檻心率 (LTHR)</div>
-          <div class="stat-value" style="color: var(--accent-cyan);">${this.runnerProfile.lthr} <small style="font-size:1.1rem;color:var(--text-muted)">bpm</small></div>
-          <div class="stat-sub">臨界強度基準線 (Zone 4 上限)</div>
+          <div class="stat-label" style="display:flex;justify-content:space-between;align-items:center;">
+            <span>生理心率雙基準 (LTHR / Max)</span>
+            <span class="badge badge-threshold" style="font-size:0.72rem;padding:0.15rem 0.45rem;">${lthrPctOfMax}% Max HR</span>
+          </div>
+          <div class="stat-value" style="display:flex;align-items:baseline;gap:0.5rem;flex-wrap:wrap;">
+            <span style="color: var(--accent-cyan); font-size:1.85rem;" title="乳酸門檻心率">${this.runnerProfile.lthr} <small style="font-size:0.9rem;color:var(--text-muted)">LTHR</small></span>
+            <span style="color: var(--border-color); font-weight:300;">/</span>
+            <span style="color: var(--accent-danger); font-size:1.6rem;" title="最大心率">${this.runnerProfile.maxHr} <small style="font-size:0.9rem;color:var(--text-muted)">Max HR</small></span>
+          </div>
+          <div class="stat-sub" style="margin-top:0.35rem;line-height:1.45;">
+            <span>📐 <strong>LTHR 換算：</strong>Max HR (${this.runnerProfile.maxHr}) × ${lthrPctOfMax}% ≈ <strong>${this.runnerProfile.lthr} bpm</strong></span>
+          </div>
         </div>
 
         <div class="stat-card lime">
@@ -1631,11 +1644,34 @@ class AppController {
       <section class="card">
         <div class="card-header">
           <div>
-            <h2 class="card-title">跑者心率與配速訓練區間對照表 (基準: VDOT ${this.runnerProfile.vdot.toFixed(1)}, LTHR: ${this.runnerProfile.lthr} bpm)</h2>
-            <small class="text-muted">依據個人即時生理設定動態重標，對標 2026 即時訓練成效</small>
+            <h2 class="card-title">跑者心率與配速訓練區間對照表 (基準: VDOT ${this.runnerProfile.vdot.toFixed(1)} | LTHR: ${this.runnerProfile.lthr} bpm | Max HR: ${this.runnerProfile.maxHr} bpm)</h2>
+            <small class="text-muted">整合試算表「訓練區間」與「實戰心率強度對照表」，包含建議配速、%LTHR、%Max HR、RPE 體感指標與實戰指令</small>
           </div>
-          <span class="badge badge-test">VDOT ${this.runnerProfile.vdot.toFixed(1)} Standard</span>
+          <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+            <span class="badge badge-test">VDOT ${this.runnerProfile.vdot.toFixed(1)} Standard</span>
+            <span class="badge badge-threshold">LTHR ${this.runnerProfile.lthr} bpm</span>
+            <span class="badge badge-interval">Max HR ${this.runnerProfile.maxHr} bpm</span>
+          </div>
         </div>
+
+        <!-- 生理基準與 LTHR 推導公式詳解方塊 -->
+        <div class="lthr-formula-box" style="margin: 0.5rem 1.5rem 1.25rem; background: rgba(0, 242, 254, 0.04); border: 1px solid rgba(0, 242, 254, 0.22); border-radius: var(--radius-sm); padding: 1rem 1.25rem;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.5rem; flex-wrap:wrap; gap:0.5rem;">
+            <div style="display:flex; align-items:center; gap:0.5rem; font-weight:700; color:var(--accent-cyan); font-size:0.95rem;">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+              <span>臨界心率 (LTHR) 運動生理學推導原理</span>
+            </div>
+            <span class="badge badge-ghost" style="font-family:var(--font-mono); font-size:0.8rem;">
+              LTHR (${this.runnerProfile.lthr}) ÷ Max HR (${this.runnerProfile.maxHr}) = ${lthrPctOfMax}%
+            </span>
+          </div>
+          <div style="font-size:0.86rem; color:var(--text-secondary); line-height:1.65;">
+            <div>• <strong>公式推導：</strong>跑者臨界心率（<strong>${this.runnerProfile.lthr} bpm</strong>）是由最大心率（<strong>${this.runnerProfile.maxHr} bpm</strong>）乘上 <strong>${lthrPctOfMax}%</strong>（約 <strong>88%</strong>）計算得出（公式：<code>LTHR = Max HR × ${lthrPctOfMax}%</code>）。</div>
+            <div>• <strong>生理意義：</strong>此數值為 Zone 4 乳酸門檻天花板，代表體內乳酸生成速率與排除速率剛好平衡的臨界點（舒適的艱難，呼吸節奏 2-2）。日常有氧慢跑應控制在 LTHR 以下，週二門檻跑則嚴格以 ${this.runnerProfile.lthr} bpm 為上限天花板。</div>
+            <div>• <strong>實地測量：</strong>亦可透過 30 分鐘全力計時跑測驗（取後 20 分鐘平均心率）實測校準。</div>
+          </div>
+        </div>
+
         <div class="data-table-container">
           <table class="data-table">
             <thead>
@@ -1645,24 +1681,47 @@ class AppController {
                 <th>建議配速</th>
                 <th>心率目標 (bpm)</th>
                 <th>% LTHR</th>
+                <th>% Max HR</th>
+                <th>體感指標 (RPE 與呼吸)</th>
                 <th>2026 實際累積里程</th>
-                <th>核心目的</th>
+                <th>核心目的與實戰指令</th>
               </tr>
             </thead>
             <tbody>
               ${zones.map(z => {
                 const zoneKey = z.zone.toLowerCase().replace(' ', '-');
-                const matchedStat = hrStatsYear.breakdown.find(b => z.zone.includes(b.key.replace('zone', 'Zone ')));
+                const zNum = z.zone.match(/\d+/)?.[0];
+                const matchedStat = hrStatsYear.breakdown.find(b => zNum && b.key === `zone${zNum}`);
                 const kmDisplay = matchedStat ? `${matchedStat.km} km (${matchedStat.percent}%)` : '-';
+
+                // 計算或呈現 % Max HR
+                let pctMaxHrText = z.pctMaxHR || '';
+                if (!pctMaxHrText && z.hrTarget) {
+                  const nums = z.hrTarget.match(/\d+/g);
+                  if (nums && nums.length >= 2) {
+                    const p1 = Math.round((parseInt(nums[0], 10) / this.runnerProfile.maxHr) * 100);
+                    const p2 = Math.round((parseInt(nums[1], 10) / this.runnerProfile.maxHr) * 100);
+                    pctMaxHrText = `${p1}%–${p2}%`;
+                  } else if (nums && nums.length === 1) {
+                    const p1 = Math.round((parseInt(nums[0], 10) / this.runnerProfile.maxHr) * 100);
+                    pctMaxHrText = `≥ ${p1}%`;
+                  }
+                }
+
                 return `
                   <tr>
                     <td><span class="zone-pill ${zoneKey}">${z.zone}</span></td>
                     <td><strong>${z.name}</strong></td>
-                    <td><code style="color: var(--accent-cyan); font-weight:700;">${z.paceGuide}</code></td>
-                    <td><strong style="color: var(--accent-orange);">${z.hrTarget}</strong></td>
-                    <td>${z.pctLTHR}</td>
+                    <td><code style="color: var(--accent-cyan); font-weight:700;">${z.paceGuide || '-'}</code></td>
+                    <td><strong style="color: var(--accent-orange);">${z.hrTarget || '-'}</strong></td>
+                    <td><span class="badge badge-ghost">${z.pctLTHR || '-'}</span></td>
+                    <td style="color: var(--accent-cyan); font-size:0.85rem; font-family:var(--font-mono);">${pctMaxHrText || '-'}</td>
+                    <td style="font-size:0.85rem; color:var(--text-primary);">${z.rpe || '-'}</td>
                     <td style="color: var(--accent-lime); font-weight: 700;">${kmDisplay}</td>
-                    <td>${z.purpose}</td>
+                    <td style="font-size:0.85rem; line-height:1.45;">
+                      <div>${z.purpose || ''}</div>
+                      ${z.tactics ? `<div style="color:var(--text-muted);font-size:0.8rem;margin-top:0.3rem;">📌 ${z.tactics}</div>` : ''}
+                    </td>
                   </tr>
                 `;
               }).join('')}

@@ -313,7 +313,7 @@ export function computeZoneBenchmarkCards(profile = null) {
       pctLTHR: '65%–80%',
       hrMin: t.z1Min,
       hrMax: t.z1Max,
-      hrDisplay: `< ${t.z1Max} bpm`,
+      hrDisplay: `${t.z1Min} – ${t.z1Max} bpm`,
       paceDisplay: `> ${fmtPaceOnly(z1PaceSec)} /km`,
       purpose: '主動修復・乳酸排除',
       color: '#38BDF8',

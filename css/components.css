@@ -375,6 +375,7 @@
 .zone-pill.zone-2 { background: rgba(16, 185, 129, 0.15); color: var(--zone-2); border: 1px solid var(--zone-2); }
 .zone-pill.zone-3 { background: rgba(245, 158, 11, 0.15); color: var(--zone-3); border: 1px solid var(--zone-3); }
 .zone-pill.zone-4 { background: rgba(255, 107, 74, 0.15); color: var(--zone-4); border: 1px solid var(--zone-4); }
+.zone-pill.zone-5 { background: rgba(239, 68, 68, 0.15); color: var(--zone-5a); border: 1px solid var(--zone-5a); }
 .zone-pill.zone-5a { background: rgba(239, 68, 68, 0.15); color: var(--zone-5a); border: 1px solid var(--zone-5a); }
 .zone-pill.zone-5b { background: rgba(168, 85, 247, 0.15); color: var(--zone-5b); border: 1px solid var(--zone-5b); }
 

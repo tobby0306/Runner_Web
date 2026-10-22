@@ -120,7 +120,7 @@ export const MOCK_DATA = {
   trainingZones: [
     {
       zone: 'Zone 1',
-      name: '恢復跑 (Recovery)',
+      name: 'Zone 1 恢復跑',
       paceGuide: '> 7:10',
       paceSecMin: 430,
       paceSecMax: 540,
@@ -128,11 +128,14 @@ export const MOCK_DATA = {
       hrMin: 112,
       hrMax: 137,
       pctLTHR: '65%–80%',
-      purpose: '主動修復、乳酸清除、微血管增生'
+      pctMaxHR: '57%–70%',
+      rpe: 'RPE 1-2 (極輕鬆，呼吸 3-3)',
+      tactics: '高強度課表隔天消磁跑，完全無疲勞累積。',
+      purpose: '主動修復與乳酸清除'
     },
     {
       zone: 'Zone 2',
-      name: '輕鬆跑 (E)',
+      name: 'Zone 2 輕鬆跑 (E)',
       paceGuide: '6:25 – 7:09',
       paceSecMin: 385,
       paceSecMax: 429,
@@ -140,11 +143,14 @@ export const MOCK_DATA = {
       hrMin: 138,
       hrMax: 153,
       pctLTHR: '80%–89%',
-      purpose: '有氧基底、粒線體生長、累積週里程'
+      pctMaxHR: '70%–78%',
+      rpe: 'RPE 3 (輕鬆，呼吸 3-3，能說完整長句)',
+      tactics: '日常輕鬆跑應以此區間中段 (140-148 bpm) 為核心。',
+      purpose: '建立基礎有氧、累積有氧底子、促進恢復。'
     },
     {
       zone: 'Zone 3',
-      name: '馬拉松 (M)',
+      name: 'Zone 3 馬拉松 (M)',
       paceGuide: '6:01',
       paceSecMin: 361,
       paceSecMax: 361,
@@ -152,11 +158,14 @@ export const MOCK_DATA = {
       hrMin: 154,
       hrMax: 163,
       pctLTHR: '89%–95%',
-      purpose: '模擬馬拉松巡航賽速、脂肪供能效率'
+      pctMaxHR: '78%–83%',
+      rpe: 'RPE 4 (開始吃力，呼吸 2-2)',
+      tactics: '2022 台北馬 (均心率 158.5 bpm) 強度。日常 E 跑若在此區間會因消耗醣原過快而提早疲勞，日常慢跑應避開。',
+      purpose: '模擬馬拉松賽速、訓練後半程維持跑姿的能力。'
     },
     {
       zone: 'Zone 4',
-      name: '門檻跑 (T)',
+      name: 'Zone 4 門檻跑 (T)',
       paceGuide: '5:29',
       paceSecMin: 329,
       paceSecMax: 329,
@@ -164,31 +173,40 @@ export const MOCK_DATA = {
       hrMin: 164,
       hrMax: 172,
       pctLTHR: '95%–100%',
-      purpose: '提升乳酸代謝與排除效率 (乳酸門檻)'
+      pctMaxHR: '84%–88%',
+      rpe: 'RPE 5-6 (舒適的艱難，呼吸 2-2)',
+      tactics: '週二 T 跑核心區，絕對不准衝破 172 bpm 天花板。',
+      purpose: '提升身體清除與代謝乳酸的能力 (乳酸門檻)。'
     },
     {
       zone: 'Zone 5a',
-      name: '最大攝氧 (I)',
+      name: 'Zone 5 最大攝氧 (I)',
       paceGuide: '5:04',
       paceSecMin: 304,
       paceSecMax: 304,
       hrTarget: '173 – 196',
       hrMin: 173,
       hrMax: 196,
-      pctLTHR: '>100%',
-      purpose: '刺激最大攝氧量 (VO2max) 與心臟搏出量'
+      pctLTHR: '> 100%',
+      pctMaxHR: '88%–100%',
+      rpe: 'RPE 7-8 (極度吃力，呼吸 2-1)',
+      tactics: '刺激心肺極限，提升最大攝氧量 (VO2Max)。操場短速度間歇，基礎期暫時封印。',
+      purpose: '刺激心肺極限，提升最大攝氧量 (VO2Max)。'
     },
     {
       zone: 'Zone 5b',
-      name: '速度重複 (R)',
+      name: 'Zone 5 重複/速度跑 (R)',
       paceGuide: '4:48',
       paceSecMin: 288,
       paceSecMax: 288,
       hrTarget: '183 – 196',
       hrMin: 183,
       hrMax: 196,
-      pctLTHR: '>100%',
-      purpose: '改善跑步經濟性、快縮肌協調神經徵召'
+      pctLTHR: '> 100%',
+      pctMaxHR: '93%–100%',
+      rpe: 'RPE 9-10 (極限無氧衝刺)',
+      tactics: '操場短速度間歇 (如 200m R 跑)。改善跑步經濟性，訓練快縮肌與步頻。',
+      purpose: '改善跑步經濟性，訓練快縮肌與步頻。'
     }
   ],
 

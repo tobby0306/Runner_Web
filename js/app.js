@@ -6,9 +6,9 @@
  * 3. 完整 Jack Daniels 7 大強度分類體系 (E, M, T, I, R, RACE, TEST) 與分段配速對標
  */
 
-import { APP_CONFIG } from './config.js';
-import { sheetsService, DataSourceStatus } from './services/sheetsService.js';
-import { storageService } from './services/storageService.js';
+import { APP_CONFIG } from './config.js?v=2.2.2';
+import { sheetsService, DataSourceStatus } from './services/sheetsService.js?v=2.2.2';
+import { storageService } from './services/storageService.js?v=2.2.2';
 import { formatDate, formatDuration, formatPace, getActivityYear } from './utils/formatters.js';
 import { getActivityTimestamp, classifyWorkoutType } from './utils/activityParser.js';
 import { calcVDOT, extractVDOTMilestones, getVDOTPredictions } from './utils/vdotCalc.js';

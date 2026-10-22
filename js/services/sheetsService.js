@@ -3,10 +3,10 @@
  * 負責 Google Sheets CSV 資料擷取、平行平行批次處理、快取與平滑降級 (整合 Task T-02 & T-03)
  */
 
-import { APP_CONFIG } from '../config.js';
-import { parseCSV } from '../utils/csvParser.js';
-import { storageService } from './storageService.js';
-import { MOCK_DATA } from '../mock/mockData.js';
+import { APP_CONFIG } from '../config.js?v=2.2.2';
+import { parseCSV } from '../utils/csvParser.js?v=2.2.2';
+import { storageService } from './storageService.js?v=2.2.2';
+import { MOCK_DATA } from '../mock/mockData.js?v=2.2.2';
 import { parseActivities, classifyWorkoutType, getActivityTimestamp } from '../utils/activityParser.js';
 
 export const DataSourceStatus = {
@@ -302,57 +302,62 @@ class SheetsService {
   }
 
   _transformRawZones(rawRows) {
-    if (!rawRows || rawRows.length < 4) return MOCK_DATA.trainingZones;
+    if (!rawRows || !Array.isArray(rawRows) || rawRows.length < 2) return MOCK_DATA.trainingZones;
     const defaults = MOCK_DATA.trainingZones;
 
-    // 嘗試從試算表下半部 (Table 2: 實戰心率區間對照表) 萃取 RPE、實戰指令與 %LTHR
+    // 1. 動態掃描所有列，完全不預設列索引 (徹底根除 Zone 1 因索引偏移被略過之問題)
     const table2Map = {};
-    for (let i = 12; i < rawRows.length; i++) {
+    const table1Rows = [];
+
+    for (let i = 0; i < rawRows.length; i++) {
       const row = rawRows[i];
-      if (!row || !row[0]) continue;
+      if (!row || row.length < 2 || !row[0]) continue;
       const cell0 = String(row[0]).trim();
       const zMatch = cell0.match(/^Zone\s*([0-9]+[a-z]?)/i);
-      if (zMatch) {
-        const key = `Zone ${zMatch[1]}`;
-        // 尋找哪一欄包含 RPE，哪一欄是說明
+      if (!zMatch) continue;
+
+      const zoneKey = `Zone ${zMatch[1]}`;
+      const cell1 = String(row[1] || '').trim();
+
+      // 判斷屬於 Table 2 (實戰心率區間表) 還是 Table 1 (配速與訓練區間表)
+      // Table 2 的欄位 1 為 % LTHR 百分比 (包含 % 符號)
+      if (cell1.includes('%')) {
         let rpeText = '';
         let tacticsText = '';
         for (let colIdx = 1; colIdx < row.length; colIdx++) {
           const val = String(row[colIdx] || '').trim();
           if (val.toUpperCase().includes('RPE')) {
             rpeText = val;
-          } else if (val.length > 10 && !val.includes('%') && !val.includes('bpm')) {
+          } else if (val.length > 8 && !val.includes('%') && !val.includes('bpm')) {
             tacticsText = val;
           }
         }
-        table2Map[key] = {
-          pctLTHR: row[1] ? String(row[1]).trim() : '',
+        table2Map[zoneKey] = {
+          pctLTHR: cell1,
           hrTarget: row[2] ? String(row[2]).trim() : '',
           tactics: tacticsText,
           rpe: rpeText
         };
+      } else {
+        // Table 1 (包含配速指引、主要目的等)
+        table1Rows.push({
+          rawZone: cell0,
+          zoneKey: zoneKey,
+          paceGuide: cell1,
+          hrTarget: row[2] ? String(row[2]).trim() : '',
+          purpose: row[3] ? String(row[3]).trim() : ''
+        });
       }
     }
 
     const zones = [];
-    // 依據試算表實際結構: Row 2 為標題，Row 3~9 為 Zone 1 ~ 5b
-    for (let i = 3; i < Math.min(rawRows.length, 11); i++) {
-      const row = rawRows[i];
-      if (!row || row.length < 2 || !row[0]) continue;
-      const zoneName = row[0].trim();
-      if (!zoneName.toLowerCase().startsWith('zone')) continue;
+    let seenZone5Count = 0;
 
-      const paceGuide = row[1] ? row[1].trim() : '';
-      const hrTarget = row[2] ? row[2].trim() : '';
-      const purpose = row[3] ? row[3].trim() : '';
-
-      // 精準萃取 Zone 編號 (例如 Zone 1, Zone 2, Zone 5a, Zone 5b)
-      const zoneMatch = zoneName.match(/^Zone\s*([0-9]+[a-z]?)/i);
-      let zoneTag = zoneMatch ? `Zone ${zoneMatch[1]}` : zoneName.split(' ').slice(0, 2).join(' ');
-      if (zoneTag.toLowerCase() === 'zone 5' && zones.some(z => z.zone.startsWith('Zone 5'))) {
-        zoneTag = 'Zone 5b';
-      } else if (zoneTag.toLowerCase() === 'zone 5') {
-        zoneTag = 'Zone 5a';
+    for (const item of table1Rows) {
+      let zoneTag = item.zoneKey;
+      if (zoneTag.toLowerCase() === 'zone 5') {
+        seenZone5Count++;
+        zoneTag = seenZone5Count > 1 ? 'Zone 5b' : 'Zone 5a';
       }
 
       const defaultMeta = defaults.find(d => d.zone === zoneTag || d.name.includes(zoneTag)) || {};
@@ -360,9 +365,9 @@ class SheetsService {
 
       zones.push({
         zone: zoneTag,
-        name: zoneName,
-        paceGuide: paceGuide || defaultMeta.paceGuide || '',
-        hrTarget: hrTarget || t2.hrTarget || defaultMeta.hrTarget || '',
+        name: item.rawZone,
+        paceGuide: item.paceGuide || defaultMeta.paceGuide || '',
+        hrTarget: item.hrTarget || t2.hrTarget || defaultMeta.hrTarget || '',
         pctLTHR: t2.pctLTHR || defaultMeta.pctLTHR || (
           zoneTag === 'Zone 1' ? '65%–80%' : 
           zoneTag === 'Zone 2' ? '80%–89%' : 
@@ -372,11 +377,26 @@ class SheetsService {
         pctMaxHR: defaultMeta.pctMaxHR || '',
         rpe: t2.rpe || defaultMeta.rpe || '',
         tactics: t2.tactics || defaultMeta.tactics || '',
-        purpose: purpose || defaultMeta.purpose || ''
+        purpose: item.purpose || defaultMeta.purpose || ''
       });
     }
 
-    return zones.length > 0 ? zones : MOCK_DATA.trainingZones;
+    // 關鍵防禦機制：確保 Zone 1 絕對存在，避免任何試算表缺漏或格式例外
+    if (!zones.some(z => z.zone.toLowerCase().includes('zone 1'))) {
+      const defaultZ1 = defaults.find(d => d.zone === 'Zone 1');
+      const t2Z1 = table2Map['Zone 1'] || {};
+      if (defaultZ1) {
+        zones.unshift({
+          ...defaultZ1,
+          pctLTHR: t2Z1.pctLTHR || defaultZ1.pctLTHR,
+          rpe: t2Z1.rpe || defaultZ1.rpe,
+          tactics: t2Z1.tactics || defaultZ1.tactics
+        });
+      }
+    }
+
+    // 確保整體區間數量充足，否則回退至完整標準 MOCK_DATA
+    return zones.length >= 5 ? zones : MOCK_DATA.trainingZones;
   }
 
   _transformRawSchedule(rawRows) {

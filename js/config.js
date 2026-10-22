@@ -32,9 +32,9 @@ export const APP_CONFIG = {
     }
   },
 
-  // 快取設定 (升級版本前綴 runner_pulse_v8_ 清空舊快取並立即載入雙表融合心率區間)
+  // 快取設定 (升級版本前綴 runner_pulse_v10_ 清空舊快取並立即載入雙表融合心率區間)
   CACHE: {
-    PREFIX: 'runner_pulse_v8_',
+    PREFIX: 'runner_pulse_v10_',
     TTL_MS: 60 * 60 * 1000, // 1 hour
     KEYS: {
       LOGS: 'logs_data',

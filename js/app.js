@@ -112,6 +112,21 @@ class AppController {
   async init() {
     console.info('[App] Runner Pulse Analytics 初始化中...');
     window.showToast = (msg, type, duration) => this.showToast(msg, type, duration);
+
+    // 自動清理舊版快取 (確保手機與電腦皆載入最新雙表融合規格)
+    try {
+      const cachedZones = storageService.get(APP_CONFIG.CACHE.KEYS.ZONES);
+      if (cachedZones && Array.isArray(cachedZones)) {
+        const isOutdated = cachedZones.some(z => z.zone === 'Zone' || !z.rpe || z.zone === 'undefined');
+        if (isOutdated) {
+          console.info('[Cache] 偵測到舊版區間快取，自動清除以載入最新雙表規格');
+          storageService.remove(APP_CONFIG.CACHE.KEYS.ZONES);
+        }
+      }
+    } catch (e) {
+      console.warn('[Cache] 快取檢驗跳過:', e);
+    }
+
     this.updateAthleteSidebar();
     this.bindEvents();
     this.initModalEvents();
@@ -1588,7 +1603,7 @@ class AppController {
               </h4>
               <span class="badge badge-easy">共 ${hrStatsPrev.activityCount} 趟 / ${hrStatsPrev.totalAnalyzedKm} km</span>
             </div>
-            <div style="height: 220px; position: relative;">
+            <div style="height: 250px; position: relative;">
               <canvas id="zonesPrevMonthCanvas"></canvas>
             </div>
             <div style="margin-top: 0.75rem; text-align: center; font-size: 0.82rem; color: var(--text-secondary);">
@@ -1604,7 +1619,7 @@ class AppController {
               </h4>
               <span class="badge badge-threshold">共 ${hrStatsCurr.activityCount} 趟 / ${hrStatsCurr.totalAnalyzedKm} km</span>
             </div>
-            <div style="height: 220px; position: relative;">
+            <div style="height: 250px; position: relative;">
               <canvas id="zonesCurrMonthCanvas"></canvas>
             </div>
             <div style="margin-top: 0.75rem; text-align: center; font-size: 0.82rem; color: var(--text-secondary);">
@@ -1673,6 +1688,9 @@ class AppController {
         </div>
 
         <div class="data-table-container">
+          <div class="mobile-table-scroll-hint">
+            <span>👈 左右滑動表格，檢視完整 9 大強度與體感欄位 👉</span>
+          </div>
           <table class="data-table">
             <thead>
               <tr>
@@ -2713,6 +2731,7 @@ class AppController {
     }
 
     const ctx = canvas.getContext('2d');
+    const isMobile = window.innerWidth <= 640;
     this[instanceProp] = new Chart(ctx, {
       type: 'doughnut',
       data: {
@@ -2728,15 +2747,15 @@ class AppController {
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        cutout: '58%',
+        cutout: isMobile ? '50%' : '58%',
         plugins: {
           legend: {
-            position: 'right',
+            position: isMobile ? 'bottom' : 'right',
             labels: {
               color: '#94A3B8',
               boxWidth: 10,
-              padding: 8,
-              font: { family: 'Inter', size: 11 }
+              padding: isMobile ? 6 : 8,
+              font: { family: 'Inter', size: isMobile ? 10 : 11 }
             }
           },
           tooltip: {

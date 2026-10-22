@@ -427,10 +427,28 @@
    -------------------------------------------------------------------------- */
 .data-table-container {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-color);
   background: var(--bg-secondary);
   box-shadow: var(--shadow-sm);
+}
+
+.mobile-table-scroll-hint {
+  display: none;
+  padding: 0.55rem 0.85rem;
+  background: rgba(56, 189, 248, 0.08);
+  font-size: 0.78rem;
+  color: var(--accent-cyan);
+  border-bottom: 1px solid var(--border-subtle);
+  align-items: center;
+  gap: 0.4rem;
+}
+
+@media (max-width: 768px) {
+  .mobile-table-scroll-hint {
+    display: flex !important;
+  }
 }
 
 .data-table {

@@ -47,17 +47,49 @@ export const SCHEDULE_STATUS = {
 };
 
 /**
+ * 安全解析各種日期格式為本地時間 00:00:00 Date 物件
+ * 支援 YYYY/MM/DD, YYYY-MM-DD, YYYY.MM.DD, YYYY/M/D 等常見格式，防止 Invalid Date 與 NaN
+ * @param {Date|string} dateInput 
+ * @returns {Date|null}
+ */
+export function parseDateSafe(dateInput) {
+  if (!dateInput) return null;
+  if (dateInput instanceof Date) {
+    return isNaN(dateInput.getTime()) ? null : new Date(dateInput.getFullYear(), dateInput.getMonth(), dateInput.getDate(), 0, 0, 0, 0);
+  }
+  const str = String(dateInput).trim();
+  if (!str) return null;
+
+  // 1. 優先處理 YYYY[-/. ]M?M[-/. ]D?D (例如 2027/2/20, 2027-02-20, 2027.2.20)
+  const ymdMatch = str.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (ymdMatch) {
+    const y = parseInt(ymdMatch[1], 10);
+    const m = parseInt(ymdMatch[2], 10) - 1;
+    const d = parseInt(ymdMatch[3], 10);
+    const dt = new Date(y, m, d, 0, 0, 0, 0);
+    return isNaN(dt.getTime()) ? null : dt;
+  }
+
+  // 2. 原生 Date 備援解析
+  const fallback = new Date(str);
+  if (!isNaN(fallback.getTime())) {
+    return new Date(fallback.getFullYear(), fallback.getMonth(), fallback.getDate(), 0, 0, 0, 0);
+  }
+
+  return null;
+}
+
+/**
  * 格式化 Date 為 YYYY-MM-DD
  * @param {Date|string} d 
  * @returns {string}
  */
 export function toIsoDateString(d) {
-  if (!d) return '';
-  const date = new Date(d);
-  if (isNaN(date.getTime())) return '';
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
+  const dt = parseDateSafe(d);
+  if (!dt) return '';
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const day = String(dt.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
 
@@ -67,15 +99,16 @@ export function toIsoDateString(d) {
  * 
  * @param {Array<object>} scheduleList 原始課表陣列
  * @param {string} scope 'current_and_next' | 'current_month' | 'next_month' | 'all'
- * @param {Date} referenceDate 基準時間 (預設 2026-10-14 或今天)
+ * @param {Date} referenceDate 基準時間 (預設當前時間)
  * @returns {Array<object>}
  */
-export function filterScheduleByScope(scheduleList = [], scope = 'current_and_next', referenceDate = new Date('2026-10-14T00:00:00')) {
+export function filterScheduleByScope(scheduleList = [], scope = 'current_and_next', referenceDate = new Date()) {
   if (!scheduleList || scheduleList.length === 0) return [];
   if (scope === 'all') return scheduleList;
 
-  const currentYear = referenceDate.getFullYear();
-  const currentMonth = referenceDate.getMonth(); // 0-indexed (9 = 10月)
+  const ref = parseDateSafe(referenceDate) || new Date();
+  const currentYear = ref.getFullYear();
+  const currentMonth = ref.getMonth(); // 0-indexed (9 = 10月)
 
   // 計算下個月年月
   let nextYear = currentYear;
@@ -87,8 +120,8 @@ export function filterScheduleByScope(scheduleList = [], scope = 'current_and_ne
 
   return scheduleList.filter(item => {
     if (!item.date) return false;
-    const itemDate = new Date(item.date);
-    if (isNaN(itemDate.getTime())) return false;
+    const itemDate = parseDateSafe(item.date);
+    if (!itemDate) return false;
 
     const y = itemDate.getFullYear();
     const m = itemDate.getMonth();
@@ -109,10 +142,10 @@ export function filterScheduleByScope(scheduleList = [], scope = 'current_and_ne
  * 
  * @param {object} sched 課表項目 { week, date, day, name, tags, estKm, actKm, notes }
  * @param {Array<object>} logs 訓練日誌活動陣列
- * @param {Date} referenceDate 基準比對日期 (預設 2026-10-14)
+ * @param {Date} referenceDate 基準比對日期 (預設當前時間)
  * @returns {object} 包含執行狀態、差值、關聯活動之擴充物件
  */
-export function evaluateScheduleItem(sched, logs = [], referenceDate = new Date('2026-10-14T00:00:00')) {
+export function evaluateScheduleItem(sched, logs = [], referenceDate = new Date()) {
   const schedDateStr = toIsoDateString(sched.date);
   const targetKm = parseFloat(sched.estKm) || 0;
 
@@ -138,9 +171,10 @@ export function evaluateScheduleItem(sched, logs = [], referenceDate = new Date(
   const deltaKm = Math.round((actualKm - targetKm) * 100) / 100;
 
   // 3. 判定時間關係與執行五態
-  const schedDateObj = new Date(sched.date);
+  const ref = parseDateSafe(referenceDate) || new Date();
+  const schedDateObj = parseDateSafe(sched.date) || new Date();
   schedDateObj.setHours(23, 59, 59, 999);
-  const isPast = schedDateObj < referenceDate;
+  const isPast = schedDateObj < ref;
 
   let status = SCHEDULE_STATUS.UPCOMING;
 
@@ -240,7 +274,7 @@ export function calculateScheduleSummary(evaluatedItems = []) {
  * @returns {object}
  */
 export function detectTargetMilestone(schedule = [], logs = [], referenceDate = new Date()) {
-  const ref = new Date(referenceDate);
+  const ref = parseDateSafe(referenceDate) || new Date();
   ref.setHours(0, 0, 0, 0);
   const refTime = ref.getTime();
 
@@ -248,17 +282,21 @@ export function detectTargetMilestone(schedule = [], logs = [], referenceDate = 
 
   if (Array.isArray(schedule) && schedule.length > 0) {
     // 依日期時間升序排序
-    const sorted = [...schedule].filter(i => i.date).sort((a, b) => new Date(a.date) - new Date(b.date));
+    const sorted = [...schedule].filter(i => i.date).sort((a, b) => {
+      const da = parseDateSafe(a.date);
+      const db = parseDateSafe(b.date);
+      return (da ? da.getTime() : 0) - (db ? db.getTime() : 0);
+    });
 
     // 嚴格的目標賽事/測驗標識 (排除普通課表距離如 5K/10K 與平日 Q1/Q2 質量跑，只針對真正測驗與大賽)
     const milestoneRegex = /(測驗|比賽|馬拉松|半馬|全馬|決戰|大考|總驗收|race|marathon|test\b)/i;
 
     // 1. 優先找「今天或未來」名稱明確含有測驗/比賽/馬拉松，或標籤明確為 RACE 的活動
     const futureMilestones = sorted.filter(item => {
-      const itemDate = new Date(item.date);
-      itemDate.setHours(0, 0, 0, 0);
+      const itemDate = parseDateSafe(item.date);
+      if (!itemDate) return false;
       const isUpcoming = itemDate.getTime() >= refTime;
-      const isMilestone = milestoneRegex.test(item.name || '') || item.tags === 'RACE';
+      const isMilestone = milestoneRegex.test(item.name || '') || (item.tags || '').toUpperCase() === 'RACE';
       return isUpcoming && isMilestone;
     });
 
@@ -267,8 +305,8 @@ export function detectTargetMilestone(schedule = [], logs = [], referenceDate = 
     } else {
       // 2. 若未來課表中沒有明確標註「測驗/比賽」，則取未來課表清單的最後一筆 (週期的最終總結日)
       const futureItems = sorted.filter(item => {
-        const itemDate = new Date(item.date);
-        itemDate.setHours(0, 0, 0, 0);
+        const itemDate = parseDateSafe(item.date);
+        if (!itemDate) return false;
         return itemDate.getTime() >= refTime;
       });
 
@@ -277,7 +315,7 @@ export function detectTargetMilestone(schedule = [], logs = [], referenceDate = 
       } else {
         // 3. 若全部課表都在過去，取全課表的最後一筆重大里程碑
         const pastMilestones = sorted.filter(item => 
-          milestoneRegex.test(item.name || '') || item.tags === 'RACE'
+          milestoneRegex.test(item.name || '') || (item.tags || '').toUpperCase() === 'RACE'
         );
         targetItem = pastMilestones.length > 0 ? pastMilestones[pastMilestones.length - 1] : sorted[sorted.length - 1];
       }
@@ -286,8 +324,8 @@ export function detectTargetMilestone(schedule = [], logs = [], referenceDate = 
 
   // 預設容錯目標 (當課表無資料時)
   const fallbackDateStr = '2026-10-24';
-  const targetDateStr = targetItem?.date || fallbackDateStr;
-  const targetDate = new Date(targetDateStr + 'T00:00:00');
+  const targetDate = parseDateSafe(targetItem?.date) || parseDateSafe(fallbackDateStr);
+  const targetDateStr = toIsoDateString(targetDate);
   const diffDays = Math.ceil((targetDate.getTime() - refTime) / (1000 * 60 * 60 * 24));
 
   // 整理目標名稱 (例如: 🎯 2026/10/24 5K VDOT 測驗日)
@@ -305,7 +343,9 @@ export function detectTargetMilestone(schedule = [], logs = [], referenceDate = 
 
   // 倒數徽章文字 (只有真正到了測驗當天 diffDays === 0 才會顯示「今日決戰日」)
   let countdownBadgeText = '';
-  if (diffDays > 0) {
+  if (isNaN(diffDays)) {
+    countdownBadgeText = '目標期程確認中';
+  } else if (diffDays > 0) {
     countdownBadgeText = `決戰倒數 ${diffDays} 天`;
   } else if (diffDays === 0) {
     countdownBadgeText = `🔥 今日決戰日！`;
@@ -318,9 +358,9 @@ export function detectTargetMilestone(schedule = [], logs = [], referenceDate = 
     targetDateStr,
     targetName: formattedName,
     notes: rawNotes,
-    diffDays,
+    diffDays: isNaN(diffDays) ? 0 : diffDays,
     countdownBadgeText,
-    isUpcoming: diffDays >= 0
+    isUpcoming: !isNaN(diffDays) && diffDays >= 0
   };
 }
 

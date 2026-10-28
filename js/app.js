@@ -1759,7 +1759,7 @@ class AppController {
   renderScheduleView() {
     const rawSchedule = this.data.schedule || [];
     const logs = this.data.logs || [];
-    const refDate = new Date('2026-10-14T00:00:00');
+    const refDate = new Date();
 
     // 1. 依據使用者選擇的時間窗口過濾 (預設：本月與下月)
     const filteredSchedule = filterScheduleByScope(rawSchedule, this.scheduleScope, refDate);
@@ -1770,16 +1770,24 @@ class AppController {
     // 3. 彙總目前可見範圍的宏觀執行成效 KPI
     const summary = calculateScheduleSummary(evaluatedItems);
 
-    // 4. 計算倒數決戰天數
-    const targetDate = new Date('2026-10-24T00:00:00');
-    const diffDays = Math.max(0, Math.ceil((targetDate - refDate) / (1000 * 60 * 60 * 24)));
+    // 4. 計算倒數決戰天數 (動態偵測目標測驗/賽事)
+    const milestone = detectTargetMilestone(rawSchedule, logs, refDate);
+    const diffDays = Math.max(0, milestone.diffDays);
+
+    const curMonth = refDate.getMonth() + 1;
+    let nextMonth = curMonth + 1;
+    let nextYear = refDate.getFullYear();
+    if (nextMonth > 12) {
+      nextMonth = 1;
+      nextYear += 1;
+    }
 
     // 範圍標籤文字
     const scopeLabels = {
-      'current_and_next': '🌟 本月與下月 (10月 ~ 11月)',
-      'current_month': '📅 2026 年 10 月 (決戰月)',
-      'next_month': '📅 2026 年 11 月 (修復月)',
-      'all': '📜 全週期 (W1 ~ W7 全部)'
+      'current_and_next': `🌟 本月與下月 (${curMonth}月 ~ ${nextMonth}月)`,
+      'current_month': `📅 ${refDate.getFullYear()} 年 ${curMonth} 月`,
+      'next_month': `📅 ${nextYear} 年 ${nextMonth} 月`,
+      'all': '📜 全週期課表'
     };
 
     this.dom.pageContent.innerHTML = `
@@ -1814,7 +1822,7 @@ class AppController {
           <div class="kpi-val" style="color: var(--accent-orange);">
             ${diffDays} <small style="font-size:1.05rem;color:var(--text-muted)">天</small>
           </div>
-          <span class="kpi-sub">2026/10/24 5K 測驗日 (目標 VDOT 38+)</span>
+          <span class="kpi-sub">${milestone.targetName.replace(/^🎯\s*/, '')}</span>
         </div>
       </section>
 
@@ -1829,9 +1837,9 @@ class AppController {
           <!-- 月份時間窗口切換膠囊按鈕 (需求 1) -->
           <div class="pill-group" id="scheduleScopePillGroup">
             <button class="pill-btn ${this.scheduleScope === 'current_and_next' ? 'active' : ''}" data-scope="current_and_next">🌟 本月與下月</button>
-            <button class="pill-btn ${this.scheduleScope === 'current_month' ? 'active' : ''}" data-scope="current_month">10 月份</button>
-            <button class="pill-btn ${this.scheduleScope === 'next_month' ? 'active' : ''}" data-scope="next_month">11 月份</button>
-            <button class="pill-btn ${this.scheduleScope === 'all' ? 'active' : ''}" data-scope="all">全週期 (W1~W7)</button>
+            <button class="pill-btn ${this.scheduleScope === 'current_month' ? 'active' : ''}" data-scope="current_month">${curMonth} 月份</button>
+            <button class="pill-btn ${this.scheduleScope === 'next_month' ? 'active' : ''}" data-scope="next_month">${nextMonth} 月份</button>
+            <button class="pill-btn ${this.scheduleScope === 'all' ? 'active' : ''}" data-scope="all">全週期</button>
           </div>
         </div>
 

@@ -6,9 +6,9 @@
  * 3. 完整 Jack Daniels 7 大強度分類體系 (E, M, T, I, R, RACE, TEST) 與分段配速對標
  */
 
-import { APP_CONFIG } from './config.js?v=2.2.2';
-import { sheetsService, DataSourceStatus } from './services/sheetsService.js?v=2.2.2';
-import { storageService } from './services/storageService.js?v=2.2.2';
+import { APP_CONFIG } from './config.js?v=2.2.3';
+import { sheetsService, DataSourceStatus } from './services/sheetsService.js?v=2.2.3';
+import { storageService } from './services/storageService.js?v=2.2.3';
 import { formatDate, formatDuration, formatPace, getActivityYear } from './utils/formatters.js';
 import { getActivityTimestamp, classifyWorkoutType } from './utils/activityParser.js';
 import { calcVDOT, extractVDOTMilestones, getVDOTPredictions } from './utils/vdotCalc.js';
@@ -212,6 +212,10 @@ class AppController {
     }
     if (this.dom.sidebarLthrBadge) {
       this.dom.sidebarLthrBadge.textContent = this.runnerProfile.lthr;
+    }
+    const footerBaseEl = document.getElementById('footerBaselineText');
+    if (footerBaseEl && this.data?.zonesMeta?.baselineCriterion) {
+      footerBaseEl.textContent = `基準: ${this.data.zonesMeta.baselineCriterion}`;
     }
   }
 
@@ -765,6 +769,17 @@ class AppController {
       }
 
       this.data = result;
+      // 自動從「訓練區間」頁籤 A1 欄位同步最新 VDOT 跑力基準與心率閥值
+      if (result.zonesMeta && result.zonesMeta.vdot) {
+        this.runnerProfile = {
+          ...this.runnerProfile,
+          vdot: Number(result.zonesMeta.vdot),
+          lthr: Number(result.zonesMeta.lthr || this.runnerProfile.lthr),
+          maxHr: Number(result.zonesMeta.maxHr || this.runnerProfile.maxHr)
+        };
+        storageService.saveRunnerProfile(this.runnerProfile);
+        this.updateAthleteSidebar();
+      }
       this.updateStatusBadge(result.status, result.lastSync);
       this.renderCurrentView();
 
@@ -883,7 +898,7 @@ class AppController {
     const workoutTypeStats = calculateWorkoutTypeBreakdown(logs, 2026);
 
     // 計算 Task T-EXT-03: 五大心率/配速區間基準卡 (Zone Benchmark Cards)
-    const benchmarkCards = computeZoneBenchmarkCards(this.runnerProfile);
+    const benchmarkCards = computeZoneBenchmarkCards(this.runnerProfile, this.data.zones, this.data.zonesMeta);
 
     const html = `
       <!-- Hero 決戰測驗倒數模組 (完全動態連動 Google Sheets 課表) -->
@@ -894,7 +909,7 @@ class AppController {
               <span>${milestone.targetName}</span>
             </h2>
             <p>
-              基準成績：<strong>${APP_CONFIG.ATHLETE.zonesCriterion || '2026/03/14 5K (26:15, VDOT 36.0)'}</strong> &bull; 
+              基準成績：<strong>${this.data.zonesMeta?.baselineCriterion || APP_CONFIG.ATHLETE.zonesCriterion || '2026/10/24 5K測驗 (VDOT 39.0)'}</strong> &bull; 
               本週期目標：<strong style="color:var(--accent-cyan);">${milestone.notes}</strong>
             </p>
           </div>
@@ -910,7 +925,7 @@ class AppController {
         <div class="stat-card">
           <div class="stat-label">當前跑力基準 (VDOT)</div>
           <div class="stat-value" style="color: var(--accent-cyan);">${this.runnerProfile.vdot.toFixed(1)}</div>
-          <div class="stat-sub">跑者: ${this.runnerProfile.name || 'Tobby'}</div>
+          <div class="stat-sub">跑者: ${this.runnerProfile.name || 'Tobby'} (${this.data.zonesMeta?.a1Raw || '訓練區間 A1'})</div>
         </div>
 
         <!-- 需求 1 優化：2026 年度跑量 (換成去年 2025 全年跑量對比，移除歷年累計) -->
@@ -1160,7 +1175,7 @@ class AppController {
     this.renderDashWeeklyChart(weeklyData);
 
     // 繪製首頁 VDOT 跑力趨勢圖 (T-08)
-    const vdotMilestones = extractVDOTMilestones(logs);
+    const vdotMilestones = extractVDOTMilestones(logs, this.data.zonesMeta);
     this.renderDashVdotChart(vdotMilestones);
 
     // 繪製首頁 心率強度區間環形圖 (鎖定 2026 當年度累計，連動跑者即時生理設定)
@@ -1957,11 +1972,11 @@ class AppController {
    */
   renderVdotAnalysisView() {
     const logs = this.data.logs || [];
-    const milestones = extractVDOTMilestones(logs);
+    const milestones = extractVDOTMilestones(logs, this.data.zonesMeta);
 
     // 最新測驗/賽事之 VDOT
     const latestEvent = milestones.length > 0 ? milestones[milestones.length - 1] : null;
-    const currentVDOT = latestEvent ? latestEvent.vdot : this.runnerProfile.vdot;
+    const currentVDOT = this.runnerProfile.vdot || (latestEvent ? latestEvent.vdot : 39.0);
 
     // 歷史最高 VDOT
     const peakVDOT = milestones.reduce((max, m) => Math.max(max, m.vdot), currentVDOT);
@@ -1976,7 +1991,7 @@ class AppController {
         <div class="stat-card">
           <div class="stat-label">最新跑力基準 (Latest VDOT)</div>
           <div class="stat-value" style="color: var(--accent-cyan);">${currentVDOT.toFixed(1)}</div>
-          <div class="stat-sub">${latestEvent ? `${latestEvent.date} ${latestEvent.activityName}` : '基準測驗'}</div>
+          <div class="stat-sub">${this.data.zonesMeta?.b1Raw || (latestEvent ? `${latestEvent.date} ${latestEvent.activityName}` : '訓練區間 A1 基準')}</div>
         </div>
 
         <div class="stat-card lime">
@@ -1986,9 +2001,9 @@ class AppController {
         </div>
 
         <div class="stat-card orange">
-          <div class="stat-label">秋季決戰目標 (Target VDOT)</div>
-          <div class="stat-value" style="color: var(--accent-orange);">38.0+</div>
-          <div class="stat-sub">目標: 2026/10/24 5K 測驗破 24:50</div>
+          <div class="stat-label">下一階段決戰目標 (Target VDOT)</div>
+          <div class="stat-value" style="color: var(--accent-orange);">${(Math.floor(currentVDOT) + 1).toFixed(1)}+</div>
+          <div class="stat-sub">目標: ${detectTargetMilestone(this.data.schedule || [], logs).targetName.replace(/^🎯\s*/, '')}</div>
         </div>
 
         <div class="stat-card purple">

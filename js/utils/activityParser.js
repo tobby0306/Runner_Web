@@ -139,8 +139,8 @@ export function classifyWorkoutType(name) {
     return APP_CONFIG.WORKOUT_TYPES.REPETITION;
   }
 
-  // 2. 測驗跑 (5K-Test, 跑力測驗)
-  if (/5K\s*-?\s*Test|跑力測驗|5K\s*測驗|5K-Test|\bTest\b/i.test(trimmed)) {
+  // 2. 測驗跑 (5K-Test, 5K測驗, 10K測驗, 跑力測驗, VDOT測驗, 基準測驗)
+  if (/5K\s*-?\s*Test|跑力測驗|[0-9]+K\s*測驗|VDOT\s*測驗|基準測驗|5K-Test|\bTest\b/i.test(trimmed)) {
     return APP_CONFIG.WORKOUT_TYPES.TEST;
   }
 

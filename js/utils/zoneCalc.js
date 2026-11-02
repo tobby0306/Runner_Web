@@ -1,7 +1,7 @@
 /**
  * Runner Pulse Analytics - Heart Rate Zone Analytics Engine (Task T-09)
  * 統計與分析跑者各心率區間 (Zone 1 ~ Zone 5) 之訓練里程與時間分佈
- * 依據 running_analyzer_spec.md 與 Jack Daniels / LTHR 172 bpm 準則
+ * 依據 running_analyzer_spec.md 與訓練區間頁籤動態生理準則
  */
 
 import { APP_CONFIG } from '../config.js';
@@ -18,9 +18,9 @@ import { APP_CONFIG } from '../config.js';
  * @param {number} maxHr 
  * @returns {object}
  */
-export function computeZoneThresholds(lthr = 172, maxHr = 196) {
-  const safeLthr = Number(lthr) && lthr > 0 ? Number(lthr) : (APP_CONFIG.ATHLETE.lthr || 172);
-  const safeMaxHr = Number(maxHr) && maxHr > safeLthr ? Number(maxHr) : (APP_CONFIG.ATHLETE.maxHR || 196);
+export function computeZoneThresholds(lthr = 170, maxHr = 192) {
+  const safeLthr = Number(lthr) && lthr > 0 ? Number(lthr) : (APP_CONFIG.ATHLETE.lthr || 170);
+  const safeMaxHr = Number(maxHr) && maxHr > safeLthr ? Number(maxHr) : (APP_CONFIG.ATHLETE.maxHR || 192);
 
   const z1Min = Math.round(safeLthr * 0.65);
   const z1Max = Math.round(safeLthr * 0.80) - 1;
@@ -50,8 +50,8 @@ export function computeZoneThresholds(lthr = 172, maxHr = 196) {
  * @returns {Array<object>}
  */
 export function getDynamicZoneDefinitions(profile = null) {
-  const lthr = profile?.lthr || APP_CONFIG.ATHLETE.lthr || 172;
-  const maxHr = profile?.maxHr || profile?.maxHR || APP_CONFIG.ATHLETE.maxHR || 196;
+  const lthr = profile?.lthr || APP_CONFIG.ATHLETE.lthr || 170;
+  const maxHr = profile?.maxHr || profile?.maxHR || APP_CONFIG.ATHLETE.maxHR || 192;
   const t = computeZoneThresholds(lthr, maxHr);
 
   return [
@@ -129,8 +129,8 @@ export const ZONE_DEFINITIONS = getDynamicZoneDefinitions();
  */
 export function classifyHeartRateZone(hr, profile = null) {
   if (!hr || hr <= 0) return 'zone1';
-  const lthr = profile?.lthr || APP_CONFIG.ATHLETE.lthr || 172;
-  const maxHr = profile?.maxHr || profile?.maxHR || APP_CONFIG.ATHLETE.maxHR || 196;
+  const lthr = profile?.lthr || APP_CONFIG.ATHLETE.lthr || 170;
+  const maxHr = profile?.maxHr || profile?.maxHR || APP_CONFIG.ATHLETE.maxHR || 192;
   const t = computeZoneThresholds(lthr, maxHr);
 
   if (hr <= t.z1Max) return 'zone1';
@@ -273,13 +273,16 @@ export function getLatestTwoMonths(activities = []) {
 
 /**
  * 依跑者生理設定動態產出首頁五大心率/配速區間基準卡數據 (Task T-EXT-03)
+ * 若傳入 Google Sheets「訓練區間」實際解析之 sheetZones 且跑者 VDOT 與訓練區間 A1 相同，優先直接呈現試算表配速與心率目標
  * @param {{ lthr?: number, maxHr?: number, maxHR?: number, vdot?: number }} [profile]
+ * @param {Array<object>} [sheetZones]
+ * @param {object} [zonesMeta]
  * @returns {Array<object>}
  */
-export function computeZoneBenchmarkCards(profile = null) {
-  const lthr = profile?.lthr || APP_CONFIG.ATHLETE.lthr || 172;
-  const maxHr = profile?.maxHr || profile?.maxHR || APP_CONFIG.ATHLETE.maxHR || 196;
-  const vdot = Number(profile?.vdot) || APP_CONFIG.ATHLETE.baselineVDOT || 36.0;
+export function computeZoneBenchmarkCards(profile = null, sheetZones = [], zonesMeta = null) {
+  const lthr = profile?.lthr || APP_CONFIG.ATHLETE.lthr || 170;
+  const maxHr = profile?.maxHr || profile?.maxHR || APP_CONFIG.ATHLETE.maxHR || 192;
+  const vdot = Number(profile?.vdot) || APP_CONFIG.ATHLETE.baselineVDOT || 39.0;
 
   const t = computeZoneThresholds(lthr, maxHr);
 
@@ -303,6 +306,32 @@ export function computeZoneBenchmarkCards(profile = null) {
     return `${min}:${String(s).padStart(2, '0')}`;
   };
 
+  // 若 VDOT 與訓練區間 A1 一致，優先使用試算表上的配速與心率字串
+  const useSheetExact = Array.isArray(sheetZones) && sheetZones.length >= 5 &&
+    (!zonesMeta || Math.abs(vdot - Number(zonesMeta.vdot)) < 0.05);
+
+  const findSheetZone = (tag) => {
+    if (!useSheetExact) return null;
+    return sheetZones.find(z => z.zone && z.zone.toLowerCase() === tag.toLowerCase()) || null;
+  };
+
+  const formatSheetPace = (sz, fallbackStr) => {
+    if (!sz || !sz.paceGuide) return fallbackStr;
+    const raw = String(sz.paceGuide).trim();
+    return raw.includes('/km') ? raw : `${raw} /km`;
+  };
+
+  const formatSheetHr = (sz, fallbackStr) => {
+    if (!sz || !sz.hrTarget || sz.hrTarget.includes('不看')) return fallbackStr;
+    return String(sz.hrTarget).replace(/\s*bpm/gi, '').trim();
+  };
+
+  const sz1 = findSheetZone('Zone 1');
+  const sz2 = findSheetZone('Zone 2');
+  const sz3 = findSheetZone('Zone 3');
+  const sz4 = findSheetZone('Zone 4');
+  const sz5 = findSheetZone('Zone 5a') || findSheetZone('Zone 5');
+
   return [
     {
       zone: 'Zone 1',
@@ -310,11 +339,11 @@ export function computeZoneBenchmarkCards(profile = null) {
       title: 'Zone 1 恢復跑',
       shortName: 'Z1 恢復跑',
       isFeatured: false,
-      pctLTHR: '65%–80%',
+      pctLTHR: sz1?.pctLTHR || '65%–80%',
       hrMin: t.z1Min,
       hrMax: t.z1Max,
-      hrDisplay: `${t.z1Min} – ${t.z1Max} bpm`,
-      paceDisplay: `> ${fmtPaceOnly(z1PaceSec)} /km`,
+      hrDisplay: formatSheetHr(sz1, `${t.z1Min} – ${t.z1Max}`),
+      paceDisplay: formatSheetPace(sz1, `> ${fmtPaceOnly(z1PaceSec)} /km`),
       purpose: '主動修復・乳酸排除',
       color: '#38BDF8',
       filterType: 'EASY'
@@ -325,11 +354,11 @@ export function computeZoneBenchmarkCards(profile = null) {
       title: 'Zone 2 輕鬆跑 (E) ★',
       shortName: 'Zone 2 輕鬆跑 (E)',
       isFeatured: true,
-      pctLTHR: '80%–89%',
+      pctLTHR: sz2?.pctLTHR || '80%–89%',
       hrMin: t.z2Min,
       hrMax: t.z2Max,
-      hrDisplay: `${t.z2Min} – ${t.z2Max} bpm`,
-      paceDisplay: `${fmtPaceOnly(z2PaceFastSec)} – ${fmtPaceOnly(z2PaceSlowSec)} /km`,
+      hrDisplay: formatSheetHr(sz2, `${t.z2Min} – ${t.z2Max}`),
+      paceDisplay: formatSheetPace(sz2, `${fmtPaceOnly(z2PaceFastSec)} – ${fmtPaceOnly(z2PaceSlowSec)} /km`),
       purpose: '核心有氧・微血管增生',
       color: '#10B981',
       filterType: 'EASY'
@@ -340,11 +369,11 @@ export function computeZoneBenchmarkCards(profile = null) {
       title: 'Zone 3 馬拉松 (M)',
       shortName: 'Zone 3 馬拉松 (M)',
       isFeatured: false,
-      pctLTHR: '89%–95%',
+      pctLTHR: sz3?.pctLTHR || '89%–95%',
       hrMin: t.z3Min,
       hrMax: t.z3Max,
-      hrDisplay: `${t.z3Min} – ${t.z3Max} bpm`,
-      paceDisplay: `${fmtPaceOnly(z3PaceSec)} /km`,
+      hrDisplay: formatSheetHr(sz3, `${t.z3Min} – ${t.z3Max}`),
+      paceDisplay: formatSheetPace(sz3, `${fmtPaceOnly(z3PaceSec)} /km`),
       purpose: '馬拉松巡航・脂肪利用',
       color: '#F59E0B',
       filterType: 'MARATHON'
@@ -355,11 +384,11 @@ export function computeZoneBenchmarkCards(profile = null) {
       title: 'Zone 4 門檻跑 (T)',
       shortName: 'Zone 4 門檻跑 (T)',
       isFeatured: false,
-      pctLTHR: '95%–100%',
+      pctLTHR: sz4?.pctLTHR || '95%–100%',
       hrMin: t.z4Min,
       hrMax: t.z4Max,
-      hrDisplay: `${t.z4Min} – ${t.z4Max} bpm`,
-      paceDisplay: `${fmtPaceOnly(z4PaceSec)} /km`,
+      hrDisplay: formatSheetHr(sz4, `${t.z4Min} – ${t.z4Max}`),
+      paceDisplay: formatSheetPace(sz4, `${fmtPaceOnly(z4PaceSec)} /km`),
       purpose: '乳酸門檻・提升耐乳酸',
       color: '#FF6B4A',
       filterType: 'THRESHOLD'
@@ -370,16 +399,14 @@ export function computeZoneBenchmarkCards(profile = null) {
       title: 'Zone 5 最大攝氧 (I)',
       shortName: 'Zone 5 最大攝氧 (I)',
       isFeatured: false,
-      pctLTHR: '> 100%',
+      pctLTHR: sz5?.pctLTHR || '> 100%',
       hrMin: t.z5Min,
       hrMax: t.z5Max,
-      hrDisplay: `≥ ${t.z5Min} bpm`,
-      paceDisplay: `< ${fmtPaceOnly(z5PaceSec)} /km`,
+      hrDisplay: formatSheetHr(sz5, `≥ ${t.z5Min}`),
+      paceDisplay: formatSheetPace(sz5, `< ${fmtPaceOnly(z5PaceSec)} /km`),
       purpose: '心肺極限・刺激 VO2Max',
       color: '#EF4444',
       filterType: 'INTERVAL'
     }
   ];
 }
-
-

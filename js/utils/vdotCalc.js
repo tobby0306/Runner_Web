@@ -41,38 +41,76 @@ export function calcVDOT(distanceKm, finishTimeSec) {
 
 /**
  * 從所有歷史活動中自動萃取 RACE (比賽) 與 TEST (測驗) 活動並換算 VDOT
+ * 同時整合「訓練區間」A1/B1 欄位所設定之最新基準測驗 VDOT
  * @param {Array<object>} activities 
+ * @param {object} [zonesMeta]
  * @returns {Array<{ date: string, activityId: string, activityName: string, workoutType: string, distanceKm: number, finishTimeStr: string, finishTimeSec: number, vdot: number }>}
  */
-export function extractVDOTMilestones(activities = []) {
-  if (!Array.isArray(activities) || activities.length === 0) return [];
-
+export function extractVDOTMilestones(activities = [], zonesMeta = null) {
   const milestones = [];
 
-  for (let i = 0; i < activities.length; i++) {
-    const act = activities[i];
-    const type = act.workoutType;
+  if (Array.isArray(activities) && activities.length > 0) {
+    for (let i = 0; i < activities.length; i++) {
+      const act = activities[i];
+      const type = act.workoutType;
 
-    // 依規格書 5.2：VDOT 僅對 TEST 與 RACE 活動計算
-    if (type === 'TEST' || type === 'RACE') {
-      const dist = act.distanceKm || 0;
-      const sec = act.durationTotalSec || parseDuration(act.durationTotal);
+      // 依規格書 5.2：VDOT 僅對 TEST 與 RACE 活動計算
+      if (type === 'TEST' || type === 'RACE') {
+        const dist = act.distanceKm || 0;
+        const sec = act.durationTotalSec || parseDuration(act.durationTotal);
 
-      if (dist >= 3 && sec > 0) { // 至少大於 3K 之測驗或比賽
-        const vdot = calcVDOT(dist, sec);
-        if (vdot > 20 && vdot < 85) { // 合理生理範圍過濾
-          milestones.push({
-            date: act.activityDate ? String(act.activityDate).slice(0, 10) : act.activityDateRaw.slice(0, 10),
-            activityId: act.activityId,
-            activityName: act.activityName,
-            workoutType: type,
-            distanceKm: dist,
-            finishTimeStr: act.durationTotal,
-            finishTimeSec: sec,
-            vdot
-          });
+        if (dist >= 3 && sec > 0) { // 至少大於 3K 之測驗或比賽
+          const vdot = calcVDOT(dist, sec);
+          if (vdot > 20 && vdot < 85) { // 合理生理範圍過濾
+            milestones.push({
+              date: act.activityDate ? String(act.activityDate).slice(0, 10) : act.activityDateRaw.slice(0, 10),
+              activityId: act.activityId,
+              activityName: act.activityName,
+              workoutType: type,
+              distanceKm: dist,
+              finishTimeStr: act.durationTotal,
+              finishTimeSec: sec,
+              vdot
+            });
+          }
         }
       }
+    }
+  }
+
+  // 若「訓練區間」A1 有定義跑力基準 (zonesMeta.vdot)，同步校準或補入對應測驗里程碑
+  if (zonesMeta && zonesMeta.vdot >= 20 && zonesMeta.vdot <= 85) {
+    const b1Text = String(zonesMeta.b1Raw || '').trim();
+    const dateMatch = b1Text.match(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+    const metaDate = dateMatch
+      ? `${dateMatch[1]}-${String(dateMatch[2]).padStart(2, '0')}-${String(dateMatch[3]).padStart(2, '0')}`
+      : '2026-10-24';
+
+    const distMatch = b1Text.match(/(\d+(?:\.\d+)?)\s*K/i);
+    const metaDist = distMatch ? parseFloat(distMatch[1]) : 5.0;
+
+    // 檢查是否已有同日期的里程碑
+    const existing = milestones.find(m => m.date === metaDate);
+    if (existing) {
+      // 以訓練區間 A1 權威 VDOT 校準 (因日誌總時間可能包含暖身/緩和跑)
+      existing.vdot = Number(zonesMeta.vdot);
+    } else {
+      // 若訓練日誌當日活動名稱未含 Test 或含暖身導致未入列，自動從訓練區間 A1/B1 補入該測驗里程碑
+      const matchedAct = (activities || []).find(a => {
+        const dStr = a.activityDate ? String(a.activityDate).slice(0, 10) : String(a.activityDateRaw || '').slice(0, 10);
+        return dStr === metaDate;
+      });
+      const est5kSec = Math.round(1575 * Math.pow(36.0 / zonesMeta.vdot, 1.06));
+      milestones.push({
+        date: metaDate,
+        activityId: matchedAct ? matchedAct.activityId : `zones-a1-${metaDate}`,
+        activityName: b1Text || matchedAct?.activityName || `VDOT ${zonesMeta.vdot} 基準測驗`,
+        workoutType: 'TEST',
+        distanceKm: metaDist,
+        finishTimeStr: matchedAct ? matchedAct.durationTotal : formatDuration(est5kSec),
+        finishTimeSec: matchedAct ? (matchedAct.durationTotalSec || est5kSec) : est5kSec,
+        vdot: Number(zonesMeta.vdot)
+      });
     }
   }
 
@@ -85,7 +123,7 @@ export function extractVDOTMilestones(activities = []) {
  * 參考 Jack Daniels Running Formula 經典配速常數表
  * @param {number} vdot
  */
-export function getVDOTPredictions(vdot = 36.0) {
+export function getVDOTPredictions(vdot = 39.0) {
   const v = Math.max(30, Math.min(75, vdot));
 
   // 依基準 VDOT 36 與回歸模型推估標準賽事完賽時間 (秒)

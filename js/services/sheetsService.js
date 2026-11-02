@@ -1,12 +1,13 @@
 /**
  * Runner Pulse Analytics - Google Sheets Service
- * 負責 Google Sheets CSV 資料擷取、平行平行批次處理、快取與平滑降級 (整合 Task T-02 & T-03)
+ * 負責 Google Sheets CSV 資料擷取、平行批次處理、快取與平滑降級 (整合 Task T-02 & T-03)
+ * 支援直接從「訓練區間」頁籤 A1 欄位動態解析跑者基準 VDOT (例: "VDOT 39訓練區間")
  */
 
-import { APP_CONFIG } from '../config.js?v=2.2.2';
-import { parseCSV } from '../utils/csvParser.js?v=2.2.2';
-import { storageService } from './storageService.js?v=2.2.2';
-import { MOCK_DATA } from '../mock/mockData.js?v=2.2.2';
+import { APP_CONFIG } from '../config.js?v=2.2.3';
+import { parseCSV } from '../utils/csvParser.js?v=2.2.3';
+import { storageService } from './storageService.js?v=2.2.3';
+import { MOCK_DATA } from '../mock/mockData.js?v=2.2.3';
 import { parseActivities, classifyWorkoutType, getActivityTimestamp } from '../utils/activityParser.js';
 
 export const DataSourceStatus = {
@@ -92,7 +93,7 @@ class SheetsService {
       }
     }
 
-    // 策略 3: 直連 Google Sheets 公開 CSV Export URL
+    // 策略 4: 直連 Google Sheets 公開 CSV Export URL
     if (!csvText) {
       try {
         const directUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gidStr}`;
@@ -111,7 +112,7 @@ class SheetsService {
       }
     }
 
-    // 策略 4: Google Visualization API (GViz CSV)
+    // 策略 5: Google Visualization API (GViz CSV)
     if (!csvText) {
       try {
         const gvizUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&gid=${gidStr}`;
@@ -127,7 +128,7 @@ class SheetsService {
       }
     }
 
-    // 策略 5: 公用 CORS 轉發代理 (若試算表已設為「任何知道連結的人皆可檢視」但尚未執行發布到網路)
+    // 策略 6: 公用 CORS 轉發代理
     if (!csvText) {
       const targetExport = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gidStr}`;
       const proxyList = [
@@ -173,18 +174,19 @@ class SheetsService {
   /**
    * T-02 規範函式：並行取得 3 個頁籤並透過 T-03 解析層轉換
    * @param {boolean} forceRefresh 是否強制略過快取
-   * @returns {Promise<{ logs: any[], zones: any[], schedule: any[], status: string, lastSync: Date, rawCounts: object }>}
+   * @returns {Promise<{ logs: any[], zones: any[], zonesMeta: object, schedule: any[], status: string, lastSync: Date, rawCounts: object }>}
    */
   async batchFetchAllTabs(forceRefresh = false) {
     this.currentStatus = DataSourceStatus.LOADING;
 
-    // 1. 檢查快取 (若非強制重整)
+    // 1. 檢查快取 (若非強制重整，且必須包含訓練區間 A1 元資料快取)
     if (!forceRefresh) {
       const cachedLogs = storageService.get(APP_CONFIG.CACHE.KEYS.LOGS);
       const cachedZones = storageService.get(APP_CONFIG.CACHE.KEYS.ZONES);
+      const cachedZonesMeta = storageService.get(APP_CONFIG.CACHE.KEYS.ZONES_META);
       const cachedSchedule = storageService.get(APP_CONFIG.CACHE.KEYS.SCHEDULE);
 
-      if (cachedLogs && cachedZones && cachedSchedule) {
+      if (cachedLogs && cachedZones && cachedZonesMeta && cachedSchedule) {
         this.currentStatus = DataSourceStatus.CACHED;
         this.lastSyncTime = new Date(storageService.getTimestamp(APP_CONFIG.CACHE.KEYS.LOGS) || Date.now());
         
@@ -197,12 +199,14 @@ class SheetsService {
         console.log('[T-02:batchFetchAllTabs] 命中本地快取 (Local Cache Hit):', {
           訓練日誌筆數: cachedLogs.length,
           訓練區間筆數: cachedZones.length,
+          訓練區間A1基準VDOT: cachedZonesMeta.vdot,
           課表項目數: cachedSchedule.length,
           快取同步時間: this.lastSyncTime.toLocaleString()
         });
         return {
           logs: cachedLogs,
           zones: cachedZones,
+          zonesMeta: cachedZonesMeta,
           schedule: cachedSchedule,
           status: this.currentStatus,
           lastSync: this.lastSyncTime,
@@ -230,14 +234,16 @@ class SheetsService {
         '頁籤 3 - 課表 (gid=196879307)': `${scheduleRaw.length} rows`
       });
 
-      // T-03: 透過解析層轉換資料列
+      // T-03: 透過解析層轉換資料列，並從「訓練區間」A1 欄位萃取跑者 VDOT 與生理基準
       const parsedLogs = parseActivities(logsRaw);
       const parsedZones = this._transformRawZones(zonesRaw);
+      const parsedZonesMeta = this._extractZonesMeta(zonesRaw);
       const parsedSchedule = this._transformRawSchedule(scheduleRaw);
 
       // 儲存至本地快取 (TTL 1 小時)
       storageService.set(APP_CONFIG.CACHE.KEYS.LOGS, parsedLogs);
       storageService.set(APP_CONFIG.CACHE.KEYS.ZONES, parsedZones);
+      storageService.set(APP_CONFIG.CACHE.KEYS.ZONES_META, parsedZonesMeta);
       storageService.set(APP_CONFIG.CACHE.KEYS.SCHEDULE, parsedSchedule);
 
       this.currentStatus = DataSourceStatus.LIVE;
@@ -246,6 +252,7 @@ class SheetsService {
       return {
         logs: parsedLogs,
         zones: parsedZones,
+        zonesMeta: parsedZonesMeta,
         schedule: parsedSchedule,
         status: this.currentStatus,
         lastSync: this.lastSyncTime,
@@ -258,6 +265,16 @@ class SheetsService {
     } catch (networkError) {
       console.warn('[T-02:batchFetchAllTabs] 網路或來源存取異常，啟動安全容錯機制:', networkError.message);
 
+      const defaultMeta = {
+        a1Raw: `VDOT ${APP_CONFIG.ATHLETE.baselineVDOT}訓練區間`,
+        b1Raw: APP_CONFIG.ATHLETE.lastTestDate ? `${APP_CONFIG.ATHLETE.lastTestDate.replace(/-/g, '/')} 5K測驗` : '',
+        vdot: Number(APP_CONFIG.ATHLETE.baselineVDOT || 39.0),
+        lthr: Number(APP_CONFIG.ATHLETE.lthr || 170),
+        maxHr: Number(APP_CONFIG.ATHLETE.maxHR || 192),
+        baselineCriterion: APP_CONFIG.ATHLETE.zonesCriterion || '2026/10/24 5K測驗 (VDOT 39.0)',
+        nextTestNote: ''
+      };
+
       // Fallback 1: 讀取過期快取
       const staleLogs = storageService.get(APP_CONFIG.CACHE.KEYS.LOGS);
       if (staleLogs) {
@@ -266,6 +283,7 @@ class SheetsService {
         return {
           logs: staleLogs,
           zones: storageService.get(APP_CONFIG.CACHE.KEYS.ZONES) || MOCK_DATA.trainingZones,
+          zonesMeta: storageService.get(APP_CONFIG.CACHE.KEYS.ZONES_META) || defaultMeta,
           schedule: storageService.get(APP_CONFIG.CACHE.KEYS.SCHEDULE) || MOCK_DATA.schedule,
           status: this.currentStatus,
           lastSync: this.lastSyncTime,
@@ -273,7 +291,7 @@ class SheetsService {
         };
       }
 
-      // Fallback 2: 平滑降級至規格書標準 Mock Data (經過 T-03 相同結構洗禮)
+      // Fallback 2: 平滑降級至規格書標準 Mock Data
       this.currentStatus = DataSourceStatus.MOCK;
       this.lastSyncTime = new Date();
 
@@ -289,6 +307,7 @@ class SheetsService {
       return {
         logs: normalizedMock,
         zones: MOCK_DATA.trainingZones,
+        zonesMeta: defaultMeta,
         schedule: MOCK_DATA.schedule,
         status: this.currentStatus,
         lastSync: this.lastSyncTime,
@@ -299,6 +318,83 @@ class SheetsService {
         }
       };
     }
+  }
+
+  /**
+   * 從「訓練區間」頁籤擷取生理基準元資料：
+   * - 優先讀取 A1 欄位 (rawRows[0][0]) 解析 VDOT 跑力值 (例如 "VDOT 39訓練區間" -> 39.0)
+   * - 讀取 B1 欄位 (rawRows[0][1]) 解析基準測驗說明 (例如 "2026/10/24 5K測驗")
+   * - 掃描頁籤內之「最大心率」與「臨界心率」設定值
+   * @param {string[][]} rawRows 
+   * @returns {{ a1Raw: string, b1Raw: string, vdot: number, lthr: number, maxHr: number, baselineCriterion: string, nextTestNote: string }}
+   */
+  _extractZonesMeta(rawRows) {
+    let vdot = Number(APP_CONFIG.ATHLETE.baselineVDOT || 39.0);
+    let lthr = Number(APP_CONFIG.ATHLETE.lthr || 170);
+    let maxHr = Number(APP_CONFIG.ATHLETE.maxHR || 192);
+    let a1Raw = '';
+    let b1Raw = '';
+    let nextTestNote = '';
+
+    if (rawRows && Array.isArray(rawRows) && rawRows.length > 0) {
+      // 1. 直接讀取訓練區間頁面 A1 欄位 (rawRows[0][0]) 取得 VDOT
+      const row0 = rawRows[0] || [];
+      a1Raw = row0[0] ? String(row0[0]).trim() : '';
+      b1Raw = row0[1] ? String(row0[1]).trim() : '';
+
+      if (a1Raw) {
+        // 支援 "VDOT 39訓練區間", "VDOT: 39.5", 或純數值 "39"
+        const vdotMatch = a1Raw.match(/VDOT\s*[:：=]?\s*([0-9]+(?:\.[0-9]+)?)/i) || a1Raw.match(/([0-9]+(?:\.[0-9]+)?)/);
+        if (vdotMatch) {
+          const parsed = parseFloat(vdotMatch[1]);
+          if (!isNaN(parsed) && parsed >= 20 && parsed <= 85) {
+            vdot = parsed;
+          }
+        }
+      }
+
+      // 2. 掃描其他列以取得「最大心率」、「臨界心率」與「下次測驗」
+      for (let i = 0; i < rawRows.length; i++) {
+        const row = rawRows[i];
+        if (!row || !Array.isArray(row)) continue;
+        for (let j = 0; j < row.length; j++) {
+          const cell = String(row[j] || '').trim();
+          if (!cell) continue;
+
+          if (/最大心率/i.test(cell)) {
+            const m = cell.match(/([0-9]{3})/);
+            if (m) {
+              const val = parseInt(m[1], 10);
+              if (val >= 120 && val <= 240) maxHr = val;
+            }
+          }
+          if (/臨界心率/i.test(cell)) {
+            const m = cell.match(/([0-9]{3})/);
+            if (m) {
+              const val = parseInt(m[1], 10);
+              if (val >= 100 && val <= 220) lthr = val;
+            }
+          }
+          if (/下次測驗/i.test(cell)) {
+            nextTestNote = cell.replace(/^[^\u4e00-\u9fa5a-zA-Z0-9]+|[^\u4e00-\u9fa5a-zA-Z0-9\)]+$/g, '').trim();
+          }
+        }
+      }
+    }
+
+    const baselineCriterion = b1Raw
+      ? `${b1Raw} (VDOT ${vdot.toFixed(1)})`
+      : `${a1Raw || '訓練區間 A1'} (VDOT ${vdot.toFixed(1)})`;
+
+    return {
+      a1Raw,
+      b1Raw,
+      vdot,
+      lthr,
+      maxHr,
+      baselineCriterion,
+      nextTestNote
+    };
   }
 
   _transformRawZones(rawRows) {

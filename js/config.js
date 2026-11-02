@@ -22,7 +22,7 @@ export const APP_CONFIG = {
       key: 'zones',
       gid: '1124408140',
       name: '訓練區間',
-      rangeDescription: 'VDOT 36 配速與心率區間表 (Max HR: 196, LTHR: 172)'
+      rangeDescription: 'A1 動態 VDOT 配速與心率區間表'
     },
     SCHEDULE: {
       key: 'schedule',
@@ -32,26 +32,28 @@ export const APP_CONFIG = {
     }
   },
 
-  // 快取設定 (升級版本前綴 runner_pulse_v10_ 清空舊快取並立即載入雙表融合心率區間)
+  // 快取設定 (升級版本前綴 runner_pulse_v11_ 支援訓練區間 A1 動態 VDOT 與雙表融合心率區間)
   CACHE: {
-    PREFIX: 'runner_pulse_v10_',
+    PREFIX: 'runner_pulse_v11_',
     TTL_MS: 60 * 60 * 1000, // 1 hour
     KEYS: {
       LOGS: 'logs_data',
       ZONES: 'zones_data',
+      ZONES_META: 'zones_meta',
       SCHEDULE: 'schedule_data',
       METADATA: 'sync_metadata'
     }
   },
 
-  // 跑者預設設定 (規格書 1.2 頁籤 2 基準)
+  // 跑者預設設定 (實際載入後將自動由「訓練區間」A1 欄位覆寫同步)
   ATHLETE: {
     name: 'Tobby',
-    baselineVDOT: 36.0,
-    maxHR: 196,
-    lthr: 172,
-    lastTestDate: '2026-03-14',
-    targetTestDate: '2026-10-24'
+    baselineVDOT: 39.0,
+    maxHR: 192,
+    lthr: 170,
+    lastTestDate: '2026-10-24',
+    targetTestDate: '2027-02-20',
+    zonesCriterion: '2026/10/24 5K測驗 (VDOT 39.0)'
   },
 
   // 訓練類型枚舉 (Jack Daniels E, M, T, I, R + RACE, TEST)

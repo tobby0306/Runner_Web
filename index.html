@@ -15,9 +15,9 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   
   <!-- CSS Stylesheets (Cache-busting version v2.2.2 for mobile browsers) -->
-  <link rel="stylesheet" href="css/index.css?v=2.2.2">
-  <link rel="stylesheet" href="css/layout.css?v=2.2.2">
-  <link rel="stylesheet" href="css/components.css?v=2.2.2">
+  <link rel="stylesheet" href="css/index.css?v=2.2.3">
+  <link rel="stylesheet" href="css/layout.css?v=2.2.3">
+  <link rel="stylesheet" href="css/components.css?v=2.2.3">
 </head>
 <body class="theme-dark">
   <!-- Global Toast Notification Container (Task T-EXT-07) -->
@@ -67,7 +67,7 @@
           <div class="athlete-avatar">🏃</div>
           <div class="athlete-info">
             <div class="athlete-name" id="sidebarAthleteName">Tobby Runner</div>
-            <div class="athlete-meta">VDOT: <strong id="sidebarVdotBadge">36.0</strong> | LTHR: <span id="sidebarLthrBadge">172</span></div>
+            <div class="athlete-meta">VDOT: <strong id="sidebarVdotBadge">39.0</strong> | LTHR: <span id="sidebarLthrBadge">170</span></div>
           </div>
           <button class="btn btn-ghost btn-sm btn-icon" id="btnOpenSettingsSidebar" title="自訂跑者生理參數 (VDOT, LTHR, Max HR)" aria-label="生理設定">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
@@ -145,9 +145,9 @@
         <div class="footer-meta">
           <span>Runner Pulse Analytics v1.0.0</span>
           <span>&bull;</span>
-          <span>基準: 2026/03/14 5K 測驗 (VDOT 36)</span>
+          <span id="footerBaselineText">基準: 2026/10/24 5K測驗 (VDOT 39.0)</span>
           <span>&bull;</span>
-          <span>目標: 2026/10/24 VDOT 測驗</span>
+          <span id="footerTargetText">目標: 2027/02/20 10K 春季基準測驗</span>
         </div>
         <div class="footer-links">
           <span>系統手冊: <a href="RUNNER_PULSE_SYSTEM_SPEC_AND_MANUAL.md" target="_blank">RUNNER_PULSE_SYSTEM_SPEC_AND_MANUAL.md</a></span>
@@ -283,6 +283,6 @@
   </div>
 
   <!-- App Main Entry Point (ES Module with cache-busting query) -->
-  <script type="module" src="js/app.js?v=2.2.2"></script>
+  <script type="module" src="js/app.js?v=2.2.3"></script>
 </body>
 </html>

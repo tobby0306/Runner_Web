@@ -20,7 +20,6 @@ import {
   extractDecouplingTrend
 } from './utils/physiologyCalc.js?v=2.2.3';
 import {
-  calculateLifetimeTotals,
   extractDistancePodiums,
   extractAllTimeBests,
   buildYearlyHeatmapData,
@@ -2320,7 +2319,6 @@ class AppController {
    */
   renderCareerView() {
     const logs = this.data.logs || [];
-    const totals = calculateLifetimeTotals(logs);
     const podiums = extractDistancePodiums(logs);
     const bests = extractAllTimeBests(logs);
     const heatmap = buildYearlyHeatmapData(logs, this.careerHeatmapYear);
@@ -2399,31 +2397,7 @@ class AppController {
     ];
 
     this.dom.pageContent.innerHTML = `
-      <!-- 1. 生涯累積總計 -->
-      <section class="grid-stats">
-        <div class="stat-card">
-          <div class="stat-label">生涯累積總跑量</div>
-          <div class="stat-value" style="color: var(--accent-cyan);">${totals.totalKm.toLocaleString()} <span style="font-size:1.1rem;color:var(--text-muted)">km</span></div>
-          <div class="stat-sub">相當於環島台灣 <strong>${totals.taiwanLoops}</strong> 圈</div>
-        </div>
-        <div class="stat-card lime">
-          <div class="stat-label">生涯累積總爬升</div>
-          <div class="stat-value" style="color: var(--accent-lime);">${totals.totalElevM.toLocaleString()} <span style="font-size:1.1rem;color:var(--text-muted)">m</span></div>
-          <div class="stat-sub">約 ${totals.taipei101Count} 座台北 101 / ${totals.yushanCount} 座玉山</div>
-        </div>
-        <div class="stat-card orange">
-          <div class="stat-label">生涯累積跑步時數</div>
-          <div class="stat-value" style="color: var(--accent-orange);">${totals.totalHours.toLocaleString()} <span style="font-size:1.1rem;color:var(--text-muted)">hr</span></div>
-          <div class="stat-sub">共完成 ${totals.totalRuns} 趟訓練與賽事</div>
-        </div>
-        <div class="stat-card purple">
-          <div class="stat-label">歷史紀錄跨度</div>
-          <div class="stat-value" style="color: var(--accent-purple);">${heatmap.availableYears.length} <span style="font-size:1.1rem;color:var(--text-muted)">年</span></div>
-          <div class="stat-sub">${heatmap.availableYears[heatmap.availableYears.length - 1] || 2020} ~ ${heatmap.availableYears[0] || 2026} 年持續累積</div>
-        </div>
-      </section>
-
-      <!-- 2. 4 大距離 PR 金銀銅頒獎台 -->
+      <!-- 1. 4 大距離 PR 金銀銅頒獎台 -->
       <section class="card" style="margin-bottom: 1.75rem;">
         <div class="card-header">
           <div>

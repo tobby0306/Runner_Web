@@ -1174,6 +1174,9 @@ class AppController {
                   <div style="font-size:0.83rem; color:var(--text-secondary); line-height:1.5;">
                     💡 ${acwr.status.advice}
                   </div>
+                  <div style="font-size:0.74rem; color:var(--text-muted); margin-top:0.3rem;">
+                    📐 公式：<code>ACWR = 近 7 天總負荷 ÷ 近 28 天每週平均負荷</code>（最佳區間 0.80～1.30，&gt; 1.50 過勞警戒）
+                  </div>
                 </div>
               </div>
 
@@ -1359,62 +1362,6 @@ class AppController {
           </div>
         </section>
       </div>
-
-      <!-- 需求 2 優化：近期訓練紀錄由最後一筆 (最新) 往前排序 -->
-      <section class="card">
-        <div class="card-header">
-          <div>
-            <h2 class="card-title">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
-              近期訓練紀錄 (最新前 8 筆 / 由新到舊倒序)
-            </h2>
-            <small class="text-muted">已依照最新日期自動排序，顯示最近期的執行狀態</small>
-          </div>
-          <button class="btn btn-secondary btn-sm" id="btnGoLogs">查看完整日誌 (${logs.length} 筆) &rarr;</button>
-        </div>
-
-        <div class="data-table-container">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>日期</th>
-                <th>活動名稱</th>
-                <th>強度類型</th>
-                <th>距離 (km)</th>
-                <th>平均配速</th>
-                <th>總時間</th>
-                <th>平均心率</th>
-                <th>步頻</th>
-                <th>每公里分段</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${logs.slice(0, 8).map(item => {
-                const wType = item.workoutType || 'EASY';
-                const badgeClass = this._getBadgeClass(wType);
-                const hasSplits = item.lapSplits && item.lapSplits.length > 0;
-                return `
-                  <tr>
-                    <td><code>${formatDate(item.activityDate)}</code></td>
-                    <td><strong>${item.activityName}</strong></td>
-                    <td><span class="badge ${badgeClass}">${this._getWorkoutLabel(wType)}</span></td>
-                    <td style="color: var(--accent-cyan); font-weight: 700;">${item.distanceKm ? item.distanceKm.toFixed(2) : '-'}</td>
-                    <td><code>${item.paceAvg}</code></td>
-                    <td>${item.durationTotal}</td>
-                    <td><span style="color: ${item.hrAvg > 165 ? 'var(--accent-orange)' : 'var(--text-primary)'}; font-weight:600;">${item.hrAvg || '-'} bpm</span></td>
-                    <td>${item.cadenceAvg || '-'} spm</td>
-                    <td>
-                      <button class="btn btn-outline btn-sm btn-view-splits" data-id="${item.activityId}">
-                        ${hasSplits ? (item.lapSplits.some(s => s.isTimeBased) ? `⏱️ ${item.lapSplits.length}組 間歇` : `🔍 ${item.lapSplits.length}k 分段`) : '無分段'}
-                      </button>
-                    </td>
-                  </tr>
-                `;
-              }).join('')}
-            </tbody>
-          </table>
-        </div>
-      </section>
     `;
 
     this.dom.pageContent.innerHTML = html;
@@ -1967,14 +1914,14 @@ class AppController {
         </div>
       </section>
 
-      <!-- 隱形教練洞察：長距離有氧解耦率趨勢 (Aerobic Decoupling Trend) -->
+      <!-- 隱形教練洞察：長距離耐力穩定度趨勢（後半程心率漂移） -->
       <section class="card" style="margin-bottom: 1.75rem;">
         <div class="card-header">
           <div>
             <h3 class="card-title">
-              <span>💓 長距離有氧解耦率趨勢 (Pa:HR Drift)</span>
+              <span>💓 長距離耐力穩定度趨勢（後半程心率漂移）</span>
             </h3>
-            <small class="text-muted">追蹤 ≥ 6km 有氧/馬拉松跑的前後半段效率變化，數值 ≤ 5% 代表有氧基底穩固</small>
+            <small class="text-muted">比較 6km 以上有氧跑「後半段 vs 前半段」的配速心率效率：≤ 5% 代表耐力穩固；負值代表後半程越跑越順（或前段暖身較慢）</small>
           </div>
           <span class="badge" style="background:rgba(16,185,129,0.12); color:#10b981; border:1px solid rgba(16,185,129,0.3);">目標警戒線 ≤ 5%</span>
         </div>
@@ -2110,7 +2057,7 @@ class AppController {
         labels: trend.map(t => `${t.date.slice(5)} (${t.distanceKm.toFixed(1)}k)`),
         datasets: [
           {
-            label: '有氧解耦率 (%)',
+            label: '後半程心率漂移 (%)',
             data: trend.map(t => t.decouplingPct),
             borderColor: '#38bdf8',
             backgroundColor: 'rgba(56, 189, 248, 0.14)',

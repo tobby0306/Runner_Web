@@ -372,10 +372,13 @@ export function buildYearlyHeatmapData(logs = [], targetYear = null) {
     dayMap.set(dateStr, entry);
   });
 
-  const availableYears = Array.from(yearSet).sort((a, b) => b - a);
-  const year = targetYear && yearSet.has(targetYear)
+  const currentYear = new Date().getFullYear();
+  const sortedYears = Array.from(yearSet).sort((a, b) => b - a);
+  const recentYears = sortedYears.filter(y => y >= currentYear - 1);
+  const availableYears = recentYears.length > 0 ? recentYears : sortedYears.slice(0, 2);
+  const year = targetYear && availableYears.includes(targetYear)
     ? targetYear
-    : (availableYears[0] || new Date().getFullYear());
+    : (availableYears[0] || currentYear);
 
   const jan1 = new Date(year, 0, 1);
   const dec31 = new Date(year, 11, 31);

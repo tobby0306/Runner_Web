@@ -14,6 +14,11 @@ import { formatDate, formatDuration, formatPace, parsePace, getActivityYear } fr
 import { getActivityTimestamp, classifyWorkoutType } from './utils/activityParser.js';
 import { calcVDOT, extractVDOTMilestones, getVDOTPredictions } from './utils/vdotCalc.js';
 import { calcWeatherAdjustment } from './utils/weatherCalc.js';
+import {
+  calculateACWR,
+  calculateAerobicDecoupling,
+  extractDecouplingTrend
+} from './utils/physiologyCalc.js?v=2.2.3';
 import { 
   calculateHeartRateDistribution, 
   ZONE_DEFINITIONS,
@@ -50,6 +55,7 @@ class AppController {
     this.dashVdotChartInstance = null;
     this.fullVdotChartInstance = null;
     this.dashHrChartInstance = null;
+    this.decouplingChartInstance = null;
     this.fullHrBarChartInstance = null;
     this.fullHrDoughnutChartInstance = null;
     this.prevMonthHrChartInstance = null;
@@ -682,6 +688,29 @@ class AppController {
         const isTimeRun = splits.some(s => s.isTimeBased);
         const fastestName = fastest.label || `${fastest.lap}k`;
         const slowestName = slowest.label || `${slowest.lap}k`;
+        const decoupling = calculateAerobicDecoupling(act);
+        const decouplingHtml = decoupling.valid ? `
+          <div style="margin-bottom:1.15rem; background:rgba(15,23,42,0.55); border:1px solid ${decoupling.status.color}44; border-left:4px solid ${decoupling.status.color}; border-radius:10px; padding:0.75rem 1rem; display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:0.75rem;">
+            <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+              <span style="font-size:1.2rem;">💓</span>
+              <div>
+                <div style="font-size:0.82rem; font-weight:700; color:var(--text-primary);">
+                  有氧解耦率 (Pa:HR Drift)：
+                  <span style="color:${decoupling.status.color}; font-family:var(--font-mono); font-size:0.95rem;">${decoupling.decouplingPct > 0 ? '+' : ''}${decoupling.decouplingPct}%</span>
+                  <span class="badge" style="margin-left:0.4rem; background:${decoupling.status.color}22; color:${decoupling.status.color}; border:1px solid ${decoupling.status.color}55; font-size:0.7rem;">
+                    ${decoupling.status.icon} ${decoupling.status.label}
+                  </span>
+                </div>
+                <div style="font-size:0.76rem; color:var(--text-muted); margin-top:0.2rem;">
+                  前半均心率 <strong>${decoupling.hrFirst} bpm</strong> (EF ${decoupling.efFirst}) ➔ 後半均心率 <strong>${decoupling.hrSecond} bpm</strong> (EF ${decoupling.efSecond})
+                </div>
+              </div>
+            </div>
+            <div style="font-size:0.76rem; color:var(--text-secondary); max-width:340px; line-height:1.45;">
+              💡 ${decoupling.status.advice}
+            </div>
+          </div>
+        ` : '';
 
         this.dom.modalSplitsContent.innerHTML = `
           ${weatherPanelHtml}
@@ -708,6 +737,8 @@ class AppController {
               <span class="splits-kpi-sub">${strategyDesc}</span>
             </div>
           </div>
+
+          ${decouplingHtml}
 
           <!-- 每公里分段配速與心率雙軸折線圖畫布 (Task T-11 Chart.js) -->
           <div class="splits-chart-container">
@@ -1115,6 +1146,55 @@ class AppController {
           <div class="stat-sub">全程平均心率約 ${avgHR} bpm</div>
         </div>
       </section>
+
+      <!-- 隱形教練洞察：ACWR 疲勞紅綠燈 (急慢性訓練負荷比) -->
+      ${(() => {
+        const acwr = calculateACWR(logs);
+        const maxBar = Math.max(1, ...acwr.weeklyLoads.map(w => w.load));
+        return `
+          <section class="card" style="margin-bottom: 1.5rem; border-left: 4px solid ${acwr.status.color};">
+            <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:1rem;">
+              <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap;">
+                <div style="min-width:110px;">
+                  <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em;">🩺 ACWR 負荷比</div>
+                  <div style="font-size:2rem; font-weight:800; font-family:var(--font-mono); color:${acwr.status.color}; line-height:1.1;">
+                    ${acwr.ratio.toFixed(2)}
+                  </div>
+                </div>
+                <div>
+                  <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.3rem;">
+                    <span class="badge" style="background:${acwr.status.color}22; color:${acwr.status.color}; border:1px solid ${acwr.status.color}55; font-size:0.78rem; padding:0.22rem 0.65rem;">
+                      ${acwr.status.icon} ${acwr.status.label}
+                    </span>
+                    <span style="font-size:0.78rem; color:var(--text-muted); font-family:var(--font-mono);">
+                      急性(7天): <strong style="color:var(--text-primary);">${acwr.acuteLoad}</strong> &bull; 慢性(28天週均): <strong style="color:var(--text-primary);">${acwr.chronicLoad}</strong>
+                      ${acwr.isStaleFallback ? ` &bull; 基準日 ${acwr.anchorDateStr}` : ''}
+                    </span>
+                  </div>
+                  <div style="font-size:0.83rem; color:var(--text-secondary); line-height:1.5;">
+                    💡 ${acwr.status.advice}
+                  </div>
+                </div>
+              </div>
+
+              <div style="display:flex; align-items:flex-end; gap:0.55rem; height:54px; padding:0.35rem 0.75rem; background:rgba(15,23,42,0.5); border:1px solid var(--border-color); border-radius:10px;" title="近 4 週訓練負荷 (TRIMP/點數)">
+                ${acwr.weeklyLoads.map((w, idx) => {
+                  const hPct = Math.max(12, Math.round((w.load / maxBar) * 100));
+                  const barColor = idx === 3 ? acwr.status.color : 'rgba(148,163,184,0.45)';
+                  return `
+                    <div style="display:flex; flex-direction:column; align-items:center; gap:0.15rem; min-width:34px;">
+                      <div style="width:16px; height:32px; display:flex; align-items:flex-end;">
+                        <div style="width:100%; height:${hPct}%; background:${barColor}; border-radius:3px 3px 0 0;"></div>
+                      </div>
+                      <span style="font-size:0.62rem; color:var(--text-muted);">${w.label}</span>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          </section>
+        `;
+      })()}
 
       <!-- Task T-EXT-03: 首頁五大心率/配速區間速查基準卡 (Zone Benchmark Cards) -->
       <section class="benchmark-bar-section">
@@ -1887,6 +1967,22 @@ class AppController {
         </div>
       </section>
 
+      <!-- 隱形教練洞察：長距離有氧解耦率趨勢 (Aerobic Decoupling Trend) -->
+      <section class="card" style="margin-bottom: 1.75rem;">
+        <div class="card-header">
+          <div>
+            <h3 class="card-title">
+              <span>💓 長距離有氧解耦率趨勢 (Pa:HR Drift)</span>
+            </h3>
+            <small class="text-muted">追蹤 ≥ 6km 有氧/馬拉松跑的前後半段效率變化，數值 ≤ 5% 代表有氧基底穩固</small>
+          </div>
+          <span class="badge" style="background:rgba(16,185,129,0.12); color:#10b981; border:1px solid rgba(16,185,129,0.3);">目標警戒線 ≤ 5%</span>
+        </div>
+        <div class="chart-container-box" style="height: 260px;">
+          <canvas id="zonesDecouplingCanvas"></canvas>
+        </div>
+      </section>
+
       <!-- 跑者心率與配速訓練區間對照標準表 -->
       <section class="card">
         <div class="card-header">
@@ -1981,8 +2077,84 @@ class AppController {
       </section>
     `;
 
-    // 繪製心率專頁圖表 (月度雙圓餅圖 + 全年長條圖)
+    // 繪製心率專頁圖表 (月度雙圓餅圖 + 全年長條圖 + 有氧解耦趨勢圖)
     this.renderFullZonesCharts(hrStatsYear, hrStatsPrev, hrStatsCurr);
+    this.renderDecouplingTrendChart(logs);
+  }
+
+  /**
+   * 繪製長距離有氧解耦率趨勢折線圖
+   */
+  renderDecouplingTrendChart(logs = []) {
+    const canvas = document.getElementById('zonesDecouplingCanvas');
+    if (!canvas || !window.Chart) return;
+
+    if (this.decouplingChartInstance) {
+      this.decouplingChartInstance.destroy();
+      this.decouplingChartInstance = null;
+    }
+
+    const trend = extractDecouplingTrend(logs, 16);
+    if (trend.length === 0) {
+      const parent = canvas.parentElement;
+      if (parent) {
+        parent.innerHTML = `<div style="text-align:center; padding:3rem 1rem; color:var(--text-muted);">尚無足夠的 ≥ 6km 有氧分段紀錄可繪製解耦趨勢</div>`;
+      }
+      return;
+    }
+
+    const ctx = canvas.getContext('2d');
+    this.decouplingChartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: trend.map(t => `${t.date.slice(5)} (${t.distanceKm.toFixed(1)}k)`),
+        datasets: [
+          {
+            label: '有氧解耦率 (%)',
+            data: trend.map(t => t.decouplingPct),
+            borderColor: '#38bdf8',
+            backgroundColor: 'rgba(56, 189, 248, 0.14)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 5,
+            pointBackgroundColor: trend.map(t => t.status.color),
+            pointBorderColor: '#0f172a',
+            pointBorderWidth: 1.5
+          },
+          {
+            label: '5% 穩固門檻',
+            data: trend.map(() => 5),
+            borderColor: 'rgba(16, 185, 129, 0.65)',
+            borderDash: [6, 4],
+            borderWidth: 1.5,
+            pointRadius: 0,
+            fill: false
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: '#94a3b8' } },
+          tooltip: {
+            callbacks: {
+              afterLabel: (context) => {
+                const item = trend[context.dataIndex];
+                return item && context.datasetIndex === 0 ? `${item.activityName} (${item.status.label})` : '';
+              }
+            }
+          }
+        },
+        scales: {
+          x: { ticks: { color: '#94a3b8', maxRotation: 35 }, grid: { color: 'rgba(148,163,184,0.08)' } },
+          y: {
+            ticks: { color: '#94a3b8', callback: v => `${v}%` },
+            grid: { color: 'rgba(148,163,184,0.1)' }
+          }
+        }
+      }
+    });
   }
 
   /**

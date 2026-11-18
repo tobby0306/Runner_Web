@@ -1373,44 +1373,29 @@ class AppController {
         `;
       })()}
 
-      <!-- 圖表區塊佔位 (銜接 T-08 & T-09) -->
-      <div class="grid-charts-2col">
-        <section class="card">
-          <div class="card-header">
+      <!-- 心率強度區間分佈 (2026 年度) -->
+      <section class="card">
+        <div class="card-header">
+          <div>
             <h3 class="card-title">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
-              VDOT 跑力推移趨勢 (T-08)
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a10 10 0 0 1 10 10h-10z"></path></svg>
+              心率強度區間分佈 (2026 年度)
             </h3>
-            <button class="btn btn-ghost btn-sm" id="btnGoVdot">深度分析 &rarr;</button>
+            <small class="text-muted">今年度已記錄 ${logs2026.length} 趟訓練之強度比例</small>
           </div>
-          <div class="chart-container-dash">
-            <canvas id="dashVdotCanvas"></canvas>
-          </div>
-        </section>
-
-        <section class="card">
-          <div class="card-header">
-            <div>
-              <h3 class="card-title">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a10 10 0 0 1 10 10h-10z"></path></svg>
-                心率強度區間分佈 (2026 年度)
-              </h3>
-              <small class="text-muted">今年度已記錄 ${logs2026.length} 趟訓練之強度比例</small>
+          <button class="btn btn-ghost btn-sm" id="btnGoZones">深度分析 &rarr;</button>
+        </div>
+        <div class="chart-container-dash" style="padding: 0.4rem 0;">
+          <div class="zone-dash-layout">
+            <div style="position: relative; width: 130px; height: 130px; margin: 0 auto;">
+              <canvas id="dashHrCanvas"></canvas>
             </div>
-            <button class="btn btn-ghost btn-sm" id="btnGoZones">深度分析 &rarr;</button>
-          </div>
-          <div class="chart-container-dash" style="padding: 0.4rem 0;">
-            <div class="zone-dash-layout">
-              <div style="position: relative; width: 130px; height: 130px; margin: 0 auto;">
-                <canvas id="dashHrCanvas"></canvas>
-              </div>
-              <div class="zone-legend-list" id="dashHrLegend">
-                <!-- 動態注入各區間佔比 -->
-              </div>
+            <div class="zone-legend-list" id="dashHrLegend">
+              <!-- 動態注入各區間佔比 -->
             </div>
           </div>
-        </section>
-      </div>
+        </div>
+      </section>
     `;
 
     this.dom.pageContent.innerHTML = html;
@@ -1421,10 +1406,6 @@ class AppController {
 
     // 繪製 Task T-10: 週訓練量推移堆疊柱狀圖與時數線
     this.renderDashWeeklyChart(weeklyData);
-
-    // 繪製首頁 VDOT 跑力趨勢圖 (T-08)
-    const vdotMilestones = extractVDOTMilestones(logs, this.data.zonesMeta);
-    this.renderDashVdotChart(vdotMilestones);
 
     // 繪製首頁 心率強度區間環形圖 (鎖定 2026 當年度累計，連動跑者即時生理設定)
     const hrStats2026 = calculateHeartRateDistribution(logs2026.length > 0 ? logs2026 : logs, this.runnerProfile);

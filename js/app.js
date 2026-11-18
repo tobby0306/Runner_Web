@@ -19,6 +19,13 @@ import {
   calculateAerobicDecoupling,
   extractDecouplingTrend
 } from './utils/physiologyCalc.js?v=2.2.3';
+import {
+  calculateLifetimeTotals,
+  extractDistancePodiums,
+  extractAllTimeBests,
+  buildYearlyHeatmapData,
+  extractTimeMachineWeeks
+} from './utils/careerCalc.js?v=2.2.3';
 import { 
   calculateHeartRateDistribution, 
   ZONE_DEFINITIONS,
@@ -56,6 +63,7 @@ class AppController {
     this.fullVdotChartInstance = null;
     this.dashHrChartInstance = null;
     this.decouplingChartInstance = null;
+    this.careerHeatmapYear = null;
     this.fullHrBarChartInstance = null;
     this.fullHrDoughnutChartInstance = null;
     this.prevMonthHrChartInstance = null;
@@ -1031,7 +1039,8 @@ class AppController {
       'training-logs': '訓練日誌清單',
       'vdot-analysis': 'VDOT 跑力趨勢分析',
       'hr-zones': '心率區間對照與分析',
-      'schedule': '課表執行與進度追蹤'
+      'schedule': '課表執行與進度追蹤',
+      'career': '生涯榮譽與時光機'
     };
     if (this.dom.pageTitle) {
       this.dom.pageTitle.textContent = titles[viewName] || '儀表板';
@@ -1056,6 +1065,9 @@ class AppController {
         break;
       case 'schedule':
         this.renderScheduleView();
+        break;
+      case 'career':
+        this.renderCareerView();
         break;
       default:
         this.renderDashboard();
@@ -2299,6 +2311,285 @@ class AppController {
       btn.addEventListener('click', (e) => {
         const id = e.currentTarget.getAttribute('data-id');
         this.openLapSplitsModal(id);
+      });
+    });
+  }
+
+  /**
+   * 渲染生涯榮譽與時光機頁面 (Lifetime Stats / PR Podiums / All-Time Bests / Heatmap / Time Machine)
+   */
+  renderCareerView() {
+    const logs = this.data.logs || [];
+    const totals = calculateLifetimeTotals(logs);
+    const podiums = extractDistancePodiums(logs);
+    const bests = extractAllTimeBests(logs);
+    const heatmap = buildYearlyHeatmapData(logs, this.careerHeatmapYear);
+    this.careerHeatmapYear = heatmap.year;
+    const timeMachine = extractTimeMachineWeeks(logs, new Date());
+
+    const medalIcons = ['🥇', '🥈', '🥉'];
+    const medalLabels = ['金牌', '銀牌', '銅牌'];
+    const medalColors = ['#facc15', '#cbd5e1', '#f59e0b'];
+    const heatmapColors = [
+      'rgba(148, 163, 184, 0.12)', // 0: 無紀錄
+      'rgba(16, 185, 129, 0.30)',  // 1: < 6km
+      'rgba(16, 185, 129, 0.55)',  // 2: 6~12km
+      'rgba(16, 185, 129, 0.80)',  // 3: 12~20km
+      '#10b981'                    // 4: >= 20km
+    ];
+    const monthNames = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+
+    const bestCards = [
+      {
+        icon: '⚡',
+        label: '史上最快單公里',
+        value: bests.fastestKm ? bests.fastestKm.display : '-',
+        sub: bests.fastestKm ? `${bests.fastestKm.date} · ${bests.fastestKm.activityName} (${bests.fastestKm.lapLabel})` : '尚無分段紀錄',
+        id: bests.fastestKm?.activityId,
+        color: 'var(--accent-cyan)'
+      },
+      {
+        icon: '📏',
+        label: '最長單次距離',
+        value: bests.longestDist ? bests.longestDist.display : '-',
+        sub: bests.longestDist ? `${bests.longestDist.date} · ${bests.longestDist.activityName}` : '-',
+        id: bests.longestDist?.activityId,
+        color: 'var(--accent-lime)'
+      },
+      {
+        icon: '⏱️',
+        label: '最長單次時間',
+        value: bests.longestTime ? bests.longestTime.display : '-',
+        sub: bests.longestTime ? `${bests.longestTime.date} · ${bests.longestTime.activityName}` : '-',
+        id: bests.longestTime?.activityId,
+        color: 'var(--accent-purple)'
+      },
+      {
+        icon: '⛰️',
+        label: '單次最高爬升',
+        value: bests.highestElev ? bests.highestElev.display : '-',
+        sub: bests.highestElev ? `${bests.highestElev.date} · ${bests.highestElev.activityName}` : '-',
+        id: bests.highestElev?.activityId,
+        color: 'var(--accent-orange)'
+      },
+      {
+        icon: '🔥',
+        label: '單次最高負荷',
+        value: bests.highestLoad ? bests.highestLoad.display : '-',
+        sub: bests.highestLoad ? `${bests.highestLoad.date} · ${bests.highestLoad.activityName}` : '-',
+        id: bests.highestLoad?.activityId,
+        color: '#ef4444'
+      },
+      {
+        icon: '📅',
+        label: '單月最高跑量王',
+        value: bests.bestMonth ? `${bests.bestMonth.km} km` : '-',
+        sub: bests.bestMonth ? `${bests.bestMonth.ym} (共 ${bests.bestMonth.count} 趟)` : '-',
+        id: null,
+        color: 'var(--accent-gold)'
+      },
+      {
+        icon: '🔗',
+        label: '最長連續訓練週數',
+        value: `${bests.longestStreakWeeks} 週`,
+        sub: '週週不斷練的最高連續紀錄',
+        id: null,
+        color: '#38bdf8'
+      }
+    ];
+
+    this.dom.pageContent.innerHTML = `
+      <!-- 1. 生涯累積總計 -->
+      <section class="grid-stats">
+        <div class="stat-card">
+          <div class="stat-label">生涯累積總跑量</div>
+          <div class="stat-value" style="color: var(--accent-cyan);">${totals.totalKm.toLocaleString()} <span style="font-size:1.1rem;color:var(--text-muted)">km</span></div>
+          <div class="stat-sub">相當於環島台灣 <strong>${totals.taiwanLoops}</strong> 圈</div>
+        </div>
+        <div class="stat-card lime">
+          <div class="stat-label">生涯累積總爬升</div>
+          <div class="stat-value" style="color: var(--accent-lime);">${totals.totalElevM.toLocaleString()} <span style="font-size:1.1rem;color:var(--text-muted)">m</span></div>
+          <div class="stat-sub">約 ${totals.taipei101Count} 座台北 101 / ${totals.yushanCount} 座玉山</div>
+        </div>
+        <div class="stat-card orange">
+          <div class="stat-label">生涯累積跑步時數</div>
+          <div class="stat-value" style="color: var(--accent-orange);">${totals.totalHours.toLocaleString()} <span style="font-size:1.1rem;color:var(--text-muted)">hr</span></div>
+          <div class="stat-sub">共完成 ${totals.totalRuns} 趟訓練與賽事</div>
+        </div>
+        <div class="stat-card purple">
+          <div class="stat-label">歷史紀錄跨度</div>
+          <div class="stat-value" style="color: var(--accent-purple);">${heatmap.availableYears.length} <span style="font-size:1.1rem;color:var(--text-muted)">年</span></div>
+          <div class="stat-sub">${heatmap.availableYears[heatmap.availableYears.length - 1] || 2020} ~ ${heatmap.availableYears[0] || 2026} 年持續累積</div>
+        </div>
+      </section>
+
+      <!-- 2. 4 大距離 PR 金銀銅頒獎台 -->
+      <section class="card" style="margin-bottom: 1.75rem;">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title">🏆 個人最佳成績榮譽榜 (5K / 10K / 半馬 / 全馬 金銀銅)</h2>
+            <small class="text-muted">自動掃描完賽成績與每公里分段滑動視窗（如全馬賽中跑出的最快半馬/10K/5K 也會被納入！點擊可檢視詳情）</small>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:1rem;">
+          ${['5K', '10K', 'HM', 'FM'].map(key => {
+            const cat = podiums[key];
+            return `
+              <div style="background:rgba(15,23,42,0.55); border:1px solid var(--border-color); border-radius:12px; padding:1rem;">
+                <div style="font-weight:700; font-size:0.95rem; color:var(--text-primary); margin-bottom:0.75rem; display:flex; justify-content:space-between; align-items:center;">
+                  <span>${cat.title}</span>
+                  <span class="text-muted" style="font-size:0.74rem;">Top 3</span>
+                </div>
+                ${cat.podium.length === 0 ? `
+                  <div class="text-muted" style="font-size:0.82rem; padding:1rem 0; text-align:center;">尚無足夠距離紀錄</div>
+                ` : `
+                  <div style="display:flex; flex-direction:column; gap:0.55rem;">
+                    ${cat.podium.map((item, idx) => `
+                      <div class="career-open-modal" data-id="${item.activityId}" style="cursor:pointer; background:var(--bg-card); border:1px solid var(--border-color); border-left:3px solid ${medalColors[idx]}; border-radius:8px; padding:0.6rem 0.75rem; transition:transform 0.15s ease;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem;">
+                          <span style="font-weight:700; font-size:0.86rem; color:${medalColors[idx]};">${medalIcons[idx]} ${medalLabels[idx]}</span>
+                          <strong style="font-family:var(--font-mono); font-size:1.05rem; color:var(--accent-cyan);">${item.timeStr}</strong>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.76rem; color:var(--text-secondary); margin-top:0.25rem;">
+                          <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:155px;" title="${item.activityName}">${item.activityName}</span>
+                          <span style="font-family:var(--font-mono);">${item.avgPaceStr}</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.7rem; color:var(--text-muted); margin-top:0.2rem;">
+                          <span>${item.date}</span>
+                          <span style="color:${item.sourceType === 'split' ? 'var(--accent-gold)' : 'var(--accent-lime)'};">${item.sourceLabel}</span>
+                        </div>
+                      </div>
+                    `).join('')}
+                  </div>
+                `}
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </section>
+
+      <!-- 3. 「單場之最」極限紀錄牆 -->
+      <section class="card" style="margin-bottom: 1.75rem;">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title">⚡ 「單場之最」生涯極限紀錄牆 (All-Time Bests)</h2>
+            <small class="text-muted">橫跨所有年份的個人極限突破瞬間（點擊單場紀錄可打開分段圖）</small>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:0.85rem;">
+          ${bestCards.map(b => `
+            <div ${b.id ? `class="career-open-modal" data-id="${b.id}" style="cursor:pointer;` : 'style="'} background:rgba(15,23,42,0.55); border:1px solid var(--border-color); border-radius:10px; padding:0.85rem 1rem;">
+              <div style="font-size:0.78rem; color:var(--text-muted); margin-bottom:0.3rem;">${b.icon} ${b.label}</div>
+              <div style="font-size:1.35rem; font-weight:800; font-family:var(--font-mono); color:${b.color};">${b.value}</div>
+              <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:0.3rem; line-height:1.4;">${b.sub}</div>
+            </div>
+          `).join('')}
+        </div>
+      </section>
+
+      <!-- 4. GitHub 風格年度跑步熱力圖 -->
+      <section class="card" style="margin-bottom: 1.75rem;">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title">🟩 ${heatmap.year} 年度跑步足跡熱力圖</h2>
+            <small class="text-muted">${heatmap.year} 年共出勤 <strong>${heatmap.activeDays}</strong> 天，累積 <strong>${heatmap.totalKm} km</strong>（點擊有紀錄的綠格可檢視活動）</small>
+          </div>
+          <div class="pill-group" id="careerHeatmapYearPills">
+            ${heatmap.availableYears.map(y => `
+              <button type="button" class="pill-btn ${y === heatmap.year ? 'active' : ''}" data-year="${y}">${y}</button>
+            `).join('')}
+          </div>
+        </div>
+
+        <div style="overflow-x:auto; padding-bottom:0.5rem;">
+          <div style="display:inline-flex; flex-direction:column; gap:0.35rem; min-width:740px;">
+            <div style="display:grid; grid-template-columns: repeat(${heatmap.weeks.length}, 13px); gap:3px; font-size:0.68rem; color:var(--text-muted); padding-left:22px;">
+              ${heatmap.weeks.map((col, wIdx) => {
+                const firstDay = col.find(c => !c.empty);
+                if (!firstDay) return '<span></span>';
+                const prevColFirst = wIdx > 0 ? heatmap.weeks[wIdx - 1].find(c => !c.empty) : null;
+                const showMonth = !prevColFirst || prevColFirst.month !== firstDay.month;
+                return `<span>${showMonth ? monthNames[firstDay.month] : ''}</span>`;
+              }).join('')}
+            </div>
+
+            <div style="display:flex; gap:4px; align-items:flex-start;">
+              <div style="display:grid; grid-template-rows: repeat(7, 13px); gap:3px; font-size:0.65rem; color:var(--text-muted); width:18px; text-align:right; line-height:13px;">
+                <span></span><span>一</span><span></span><span>三</span><span></span><span>五</span><span></span>
+              </div>
+              <div style="display:flex; gap:3px;">
+                ${heatmap.weeks.map(col => `
+                  <div style="display:grid; grid-template-rows: repeat(7, 13px); gap:3px;">
+                    ${col.map(cell => {
+                      if (cell.empty) {
+                        return `<div style="width:13px; height:13px;"></div>`;
+                      }
+                      const runNames = cell.runs.map(r => `${r.activityName} (${r.distanceKm}km)`).join(' / ');
+                      const tip = cell.km > 0 ? `${cell.date}：${cell.km} km — ${runNames}` : `${cell.date}：休息日`;
+                      const actId = cell.runs[0]?.activityId || '';
+                      return `<div ${actId ? `class="career-open-modal" data-id="${actId}"` : ''} title="${tip}" style="width:13px; height:13px; border-radius:3px; background:${heatmapColors[cell.level]}; ${actId ? 'cursor:pointer;' : ''}"></div>`;
+                    }).join('')}
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; align-items:center; gap:0.35rem; font-size:0.72rem; color:var(--text-muted); margin-top:0.5rem;">
+          <span>少</span>
+          ${heatmapColors.map(c => `<span style="display:inline-block; width:11px; height:11px; border-radius:2px; background:${c};"></span>`).join('')}
+          <span>20km+</span>
+        </div>
+      </section>
+
+      <!-- 5. 「歷年的這週」時光機對比 -->
+      <section class="card">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title">⏳ 「歷年的這週」時光機對比</h2>
+            <small class="text-muted">以今天（${formatDate(new Date())}）前後一週為基準，回顧歷年同期你的訓練狀態</small>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:0.85rem;">
+          ${timeMachine.map(tm => `
+            <div ${tm.topRun ? `class="career-open-modal" data-id="${tm.topRun.activityId}" style="cursor:pointer;` : 'style="'} background:rgba(15,23,42,0.55); border:1px solid var(--border-color); border-radius:10px; padding:0.85rem 1rem;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
+                <strong style="font-size:1rem; color:var(--accent-cyan); font-family:var(--font-mono);">${tm.year} 年</strong>
+                <span class="badge badge-ghost" style="font-size:0.72rem;">${tm.runCount} 趟</span>
+              </div>
+              <div style="font-size:1.25rem; font-weight:800; font-family:var(--font-mono); color:var(--text-primary);">${tm.totalKm} km</div>
+              <div style="font-size:0.76rem; color:var(--text-muted); margin-top:0.25rem;">
+                均速 ${tm.avgPaceStr} ${tm.avgHr ? `• ${tm.avgHr} bpm` : ''}
+              </div>
+              <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:0.4rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                ${tm.topRun ? `🏅 ${tm.topRun.activityName} (${tm.topRun.distanceKm.toFixed(1)}k)` : '本週無訓練紀錄'}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </section>
+    `;
+
+    // 切換年度熱力圖年份
+    document.querySelectorAll('#careerHeatmapYearPills .pill-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const y = parseInt(e.currentTarget.getAttribute('data-year'), 10);
+        if (!isNaN(y) && y !== this.careerHeatmapYear) {
+          this.careerHeatmapYear = y;
+          this.renderCareerView();
+        }
+      });
+    });
+
+    // 點擊任一紀錄 / 獎牌 / 熱力圖綠格開啟分段詳情彈窗
+    document.querySelectorAll('.career-open-modal').forEach(el => {
+      el.addEventListener('click', (e) => {
+        const id = e.currentTarget.getAttribute('data-id');
+        if (id) this.openLapSplitsModal(id);
       });
     });
   }

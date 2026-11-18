@@ -96,8 +96,33 @@ function findFastestSplitWindow(splits, targetKm) {
 }
 
 /**
+ * 判斷是否為間歇／重複跑等含休息分段之課表（不計入連續距離 PR 金銀銅）
+ * @param {object} act
+ * @returns {boolean}
+ */
+function isIntervalWorkout(act) {
+  if (!act) return false;
+  const wType = act.workoutType || '';
+  if (wType === 'INTERVAL' || wType === 'REPETITION') return true;
+
+  const name = String(act.activityName || '');
+  // 偵測常見間歇命名：200m R * 8、800m I x 5、3min T x 6、T - 3 x 2km、間歇
+  if (/(\d+\s*(?:m|k|km|min|分鐘)|[RTI])\s*[x×*]\s*\d+|\d+\s*[x×*]\s*\d+\s*(?:m|k|km|min)|間歇|亞索/i.test(name)) {
+    return true;
+  }
+
+  // 若分段內含時間組別或休息註記 (breakNote) 也視為間歇
+  const splits = act.lapSplits || [];
+  if (splits.some(s => s.isTimeBased || s.breakNote)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * 2. 萃取 4 大標準距離 (5K / 10K / 半馬 / 全馬) 金銀銅 Top 3
- * 同一場活動於同一距離最多只取一筆最佳表現 (支援全馬中抓出最快半馬/10K/5K)
+ * 同一場活動於同一距離最多只取一筆最佳表現 (支援全馬中抓出最快半馬/10K/5K，並自動排除間歇課表)
  * @param {Array<object>} logs
  */
 export function extractDistancePodiums(logs = []) {
@@ -114,6 +139,8 @@ export function extractDistancePodiums(logs = []) {
     const candidates = [];
 
     (logs || []).forEach(act => {
+      if (isIntervalWorkout(act)) return;
+
       const dist = act.distanceKm || 0;
       const totalSec = act.durationTotalSec || 0;
       if (dist < cat.minFullKm || totalSec <= 0) return;

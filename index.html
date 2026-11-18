@@ -232,6 +232,17 @@
             <small class="text-muted" style="display:block;margin-top:0.3rem">有效範圍: 120 ~ 240 bpm (必須大於乳酸門檻心率)</small>
           </div>
 
+          <div class="form-group">
+            <div class="form-label-row">
+              <label for="inputRunnerLocation" class="form-label">預設練跑地點 (天氣抓取基準)</label>
+              <span class="form-hint">Open-Meteo 歷史氣象</span>
+            </div>
+            <select id="inputRunnerLocation" class="form-control">
+              <!-- 由 app.js 動態填入 TAIWAN_CITIES -->
+            </select>
+            <small class="text-muted" style="display:block;margin-top:0.3rem">自動帶入該城市訓練當下氣溫與濕度，單筆日誌仍可隨時手動微調</small>
+          </div>
+
           <!-- 即時預覽計算區間 -->
           <div class="preview-zone-calc" id="previewZoneCalc">
             <div class="preview-title">

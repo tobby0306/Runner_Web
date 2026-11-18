@@ -9,9 +9,11 @@
 import { APP_CONFIG } from './config.js?v=2.2.3';
 import { sheetsService, DataSourceStatus } from './services/sheetsService.js?v=2.2.3';
 import { storageService } from './services/storageService.js?v=2.2.3';
-import { formatDate, formatDuration, formatPace, getActivityYear } from './utils/formatters.js';
+import { weatherService, TAIWAN_CITIES } from './services/weatherService.js?v=2.2.3';
+import { formatDate, formatDuration, formatPace, parsePace, getActivityYear } from './utils/formatters.js';
 import { getActivityTimestamp, classifyWorkoutType } from './utils/activityParser.js';
 import { calcVDOT, extractVDOTMilestones, getVDOTPredictions } from './utils/vdotCalc.js';
+import { calcWeatherAdjustment } from './utils/weatherCalc.js';
 import { 
   calculateHeartRateDistribution, 
   ZONE_DEFINITIONS,
@@ -89,6 +91,7 @@ class AppController {
       inputRunnerVdot: document.getElementById('inputRunnerVdot'),
       inputRunnerLthr: document.getElementById('inputRunnerLthr'),
       inputRunnerMaxHr: document.getElementById('inputRunnerMaxHr'),
+      inputRunnerLocation: document.getElementById('inputRunnerLocation'),
       previewBadgesGrid: document.getElementById('previewBadgesGrid'),
       settingsAlertContainer: document.getElementById('settingsAlertContainer'),
       vdotPaceHint: document.getElementById('vdotPaceHint'),
@@ -229,6 +232,12 @@ class AppController {
       if (this.dom.inputRunnerVdot) this.dom.inputRunnerVdot.value = this.runnerProfile.vdot || 36.0;
       if (this.dom.inputRunnerLthr) this.dom.inputRunnerLthr.value = this.runnerProfile.lthr || 172;
       if (this.dom.inputRunnerMaxHr) this.dom.inputRunnerMaxHr.value = this.runnerProfile.maxHr || 196;
+      if (this.dom.inputRunnerLocation) {
+        const currentLoc = weatherService.getLocationSetting();
+        this.dom.inputRunnerLocation.innerHTML = TAIWAN_CITIES.map(
+          c => `<option value="${c.id}" ${c.id === currentLoc.cityId ? 'selected' : ''}>${c.name} (${c.lat.toFixed(2)}, ${c.lon.toFixed(2)})</option>`
+        ).join('');
+      }
       if (this.dom.settingsAlertContainer) {
         this.dom.settingsAlertContainer.innerHTML = '';
       }
@@ -491,6 +500,19 @@ class AppController {
       return;
     }
 
+    if (this.dom.inputRunnerLocation) {
+      const cityId = this.dom.inputRunnerLocation.value;
+      const city = TAIWAN_CITIES.find(c => c.id === cityId);
+      if (city) {
+        weatherService.saveLocationSetting({
+          cityId: city.id,
+          name: city.name,
+          lat: city.lat,
+          lon: city.lon
+        });
+      }
+    }
+
     this.runnerProfile = newProfile;
     this.updateAthleteSidebar();
 
@@ -532,8 +554,15 @@ class AppController {
 
     if (this.dom.modalSplitsContent) {
       const splits = act.lapSplits || [];
+      const weatherPanelHtml = `<div id="modalWeatherPanel" class="wx-modal-panel" style="margin-bottom:1.15rem; background:rgba(15,23,42,0.65); border:1px solid var(--border-color); border-radius:12px; padding:1rem 1.15rem;">
+        <div style="display:flex; align-items:center; justify-content:space-between; color:var(--text-muted); font-size:0.84rem;">
+          <span>🌡️ 正在載入訓練當下天氣與等效涼爽配速...</span>
+        </div>
+      </div>`;
+
       if (splits.length === 0) {
         this.dom.modalSplitsContent.innerHTML = `
+          ${weatherPanelHtml}
           <div style="text-align: center; padding: 2.5rem 1rem; color: var(--text-muted);">
             <div style="font-size: 2.2rem; margin-bottom: 0.5rem;">⏱️</div>
             <div>此活動未記錄每公里分段細節資料。</div>
@@ -655,6 +684,7 @@ class AppController {
         const slowestName = slowest.label || `${slowest.lap}k`;
 
         this.dom.modalSplitsContent.innerHTML = `
+          ${weatherPanelHtml}
           <!-- 4 大分段極值與配速策略指標 (Task T-11) -->
           <div class="splits-kpi-grid">
             <div class="splits-kpi-item">
@@ -743,11 +773,149 @@ class AppController {
           });
         }
       }
+
+      // 初始化彈窗內天氣與體感等效配速修正面板 (Task T-WX-04)
+      this._initModalWeatherPanel(act);
     }
 
     if (this.dom.lapSplitsModal) {
       this.dom.lapSplitsModal.classList.add('open');
     }
+  }
+
+  /**
+   * 初始化單筆活動彈窗內的天氣／體感等效配速修正面板 (Task T-WX-04)
+   */
+  async _initModalWeatherPanel(act) {
+    const panel = document.getElementById('modalWeatherPanel');
+    if (!panel) return;
+
+    const paceSec = act.paceAvgSec || parsePace(act.paceAvg);
+    const wx = await weatherService.getWeatherForActivity(act.activityDate || act.activityDateRaw, act.activityId);
+
+    // 若離線或查無資料，預設提供台灣常見氣溫讓使用者仍可手動微調
+    let currentTemp = wx ? wx.tempC : 26.0;
+    let currentHumidity = wx ? wx.humidityPct : 75;
+    let currentSource = wx ? wx.source : 'fallback';
+    const locName = wx ? wx.locationName : weatherService.getLocationSetting().name;
+
+    const renderPanel = () => {
+      const adj = calcWeatherAdjustment(paceSec, currentTemp, currentHumidity, {
+        distanceKm: act.distanceKm,
+        durationSec: act.durationTotalSec
+      });
+      const sourceBadge = currentSource === 'manual'
+        ? '<span class="badge" style="background:rgba(163,230,53,0.15);color:var(--accent-lime);border:1px solid rgba(163,230,53,0.3);font-size:0.7rem;">✏️ 手動覆寫</span>'
+        : currentSource === 'auto'
+          ? `<span class="badge" style="background:rgba(0,242,254,0.12);color:var(--accent-cyan);border:1px solid rgba(0,242,254,0.28);font-size:0.7rem;">📡 Open-Meteo (${locName})</span>`
+          : '<span class="badge" style="background:rgba(148,163,184,0.15);color:var(--text-muted);font-size:0.7rem;">⚙️ 離線預設值</span>';
+
+      panel.innerHTML = `
+        <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:0.5rem; margin-bottom:0.85rem;">
+          <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+            <strong style="font-size:0.92rem; color:var(--text-primary);">${adj.stress.icon} 天氣與等效涼爽配速分析</strong>
+            ${sourceBadge}
+            <span class="badge" style="background:${adj.stress.color}22; color:${adj.stress.color}; border:1px solid ${adj.stress.color}55; font-size:0.72rem;">
+              ${adj.stress.label} (露點 ${adj.dewPointC}°C)
+            </span>
+          </div>
+          <div style="display:flex; gap:0.4rem; align-items:center;">
+            <button type="button" class="btn btn-primary btn-sm" id="btnSaveWxOverride" style="padding:0.25rem 0.6rem; font-size:0.75rem;">💾 儲存修正</button>
+            ${currentSource === 'manual' ? `<button type="button" class="btn btn-ghost btn-sm" id="btnResetWxOverride" style="padding:0.25rem 0.6rem; font-size:0.75rem;">↺ 還原自動</button>` : ''}
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap:0.75rem; margin-bottom:0.85rem;">
+          <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:8px; padding:0.65rem 0.8rem;">
+            <div style="font-size:0.72rem; color:var(--text-muted);">實跑均速</div>
+            <div style="font-size:1.15rem; font-weight:700; font-family:var(--font-mono); color:var(--text-primary);">${act.paceAvg || formatPace(paceSec)}</div>
+          </div>
+          <div style="background:var(--bg-card); border:1px solid rgba(0,242,254,0.3); border-radius:8px; padding:0.65rem 0.8rem;">
+            <div style="font-size:0.72rem; color:var(--text-muted);">等效涼爽配速 (15°C)</div>
+            <div style="font-size:1.15rem; font-weight:800; font-family:var(--font-mono); color:var(--accent-cyan);">
+              ${adj.coolPaceStr}
+              ${adj.savedSecPerKm > 0 ? `<small style="font-size:0.72rem; color:var(--accent-lime); font-weight:600;">(-${adj.savedSecPerKm}s)</small>` : ''}
+            </div>
+          </div>
+          <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:8px; padding:0.65rem 0.8rem;">
+            <div style="font-size:0.72rem; color:var(--text-muted);">熱壓力掉速影響</div>
+            <div style="font-size:1.15rem; font-weight:700; font-family:var(--font-mono); color:${adj.penaltyPct > 0 ? 'var(--accent-orange)' : 'var(--accent-lime)'};">
+              ${adj.penaltyPct > 0 ? `+${adj.penaltyPct}% 慢` : '0.0% (無損)'}
+            </div>
+          </div>
+          ${adj.adjustedVDOT ? `
+          <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:8px; padding:0.65rem 0.8rem;">
+            <div style="font-size:0.72rem; color:var(--text-muted);">熱修正等效 VDOT</div>
+            <div style="font-size:1.15rem; font-weight:800; font-family:var(--font-mono); color:var(--accent-gold);">${adj.adjustedVDOT.toFixed(1)}</div>
+          </div>` : ''}
+        </div>
+
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:0.85rem; align-items:center;">
+          <div>
+            <div style="display:flex; justify-content:space-between; font-size:0.78rem; margin-bottom:0.25rem;">
+              <label for="wxModalTempRange" style="color:var(--text-secondary);">🌡️ 氣溫 (°C)</label>
+              <strong id="wxModalTempVal" style="color:var(--accent-orange); font-family:var(--font-mono);">${currentTemp.toFixed(1)} °C</strong>
+            </div>
+            <input type="range" id="wxModalTempRange" min="5" max="40" step="0.5" value="${currentTemp}" style="width:100%; accent-color:var(--accent-orange); cursor:pointer;">
+          </div>
+          <div>
+            <div style="display:flex; justify-content:space-between; font-size:0.78rem; margin-bottom:0.25rem;">
+              <label for="wxModalHumRange" style="color:var(--text-secondary);">💧 相對濕度 (%)</label>
+              <strong id="wxModalHumVal" style="color:var(--accent-cyan); font-family:var(--font-mono);">${currentHumidity} %</strong>
+            </div>
+            <input type="range" id="wxModalHumRange" min="25" max="100" step="1" value="${currentHumidity}" style="width:100%; accent-color:var(--accent-cyan); cursor:pointer;">
+          </div>
+        </div>
+        <div style="font-size:0.76rem; color:var(--text-muted); margin-top:0.55rem;">💡 ${adj.stress.advice}</div>
+      `;
+
+      const tempInput = document.getElementById('wxModalTempRange');
+      const humInput = document.getElementById('wxModalHumRange');
+      const btnSave = document.getElementById('btnSaveWxOverride');
+      const btnReset = document.getElementById('btnResetWxOverride');
+
+      if (tempInput) {
+        tempInput.addEventListener('input', (e) => {
+          currentTemp = parseFloat(e.target.value);
+          currentSource = 'manual';
+          renderPanel();
+        });
+      }
+      if (humInput) {
+        humInput.addEventListener('input', (e) => {
+          currentHumidity = parseInt(e.target.value, 10);
+          currentSource = 'manual';
+          renderPanel();
+        });
+      }
+      if (btnSave) {
+        btnSave.addEventListener('click', () => {
+          weatherService.saveOverride(act.activityId, currentTemp, currentHumidity);
+          currentSource = 'manual';
+          this.showToast(`已儲存 #${act.activityId} 天氣修正 (${currentTemp}°C / ${currentHumidity}%)`, 'success');
+          if (this.currentView === 'training-logs') {
+            this.renderTrainingLogsView();
+          }
+          renderPanel();
+        });
+      }
+      if (btnReset) {
+        btnReset.addEventListener('click', async () => {
+          weatherService.clearOverride(act.activityId);
+          const fresh = await weatherService.getWeatherForActivity(act.activityDate || act.activityDateRaw, act.activityId);
+          currentTemp = fresh ? fresh.tempC : 26.0;
+          currentHumidity = fresh ? fresh.humidityPct : 75;
+          currentSource = fresh ? fresh.source : 'fallback';
+          this.showToast('已還原為 Open-Meteo 自動抓取天氣', 'info');
+          if (this.currentView === 'training-logs') {
+            this.renderTrainingLogsView();
+          }
+          renderPanel();
+        });
+      }
+    };
+
+    renderPanel();
   }
 
   /**
@@ -1317,6 +1485,7 @@ class AppController {
                 <th>強度類型</th>
                 <th>距離 (km)</th>
                 <th>平均配速</th>
+                <th>天氣 / 等效配速</th>
                 <th>總時間</th>
                 <th>平均心率</th>
                 <th>步頻 / 步幅</th>
@@ -1329,7 +1498,7 @@ class AppController {
             <tbody>
               ${paginatedLogs.length === 0 ? `
                 <tr>
-                  <td colspan="12" style="text-align: center; padding: 2.5rem; color: var(--text-muted);">
+                  <td colspan="13" style="text-align: center; padding: 2.5rem; color: var(--text-muted);">
                     查無符合條件的訓練日誌紀錄
                   </td>
                 </tr>
@@ -1350,6 +1519,9 @@ class AppController {
                     <td><span class="badge ${badgeClass}">${this._getWorkoutLabel(wType)}</span></td>
                     <td style="color: var(--accent-cyan); font-weight: 700;">${log.distanceKm ? log.distanceKm.toFixed(2) : '-'}</td>
                     <td><code>${log.paceAvg}</code></td>
+                    <td class="wx-log-cell" data-wx-id="${log.activityId}" style="cursor:pointer;" title="點擊開啟天氣與等效涼爽配速微調">
+                      <span class="text-muted" style="font-size:0.75rem;">⏳ 載入中</span>
+                    </td>
                     <td>${log.durationTotal}</td>
                     <td><span style="color: ${isHighHr ? 'var(--accent-danger)' : 'var(--text-primary)'}; font-weight:600;">${log.hrAvg ? log.hrAvg + ' bpm' : '-'}</span></td>
                     <td>
@@ -1446,6 +1618,51 @@ class AppController {
         const id = e.currentTarget.getAttribute('data-id');
         this.openLapSplitsModal(id);
       });
+    });
+
+    // 點擊天氣欄位亦可開啟單筆天氣微調彈窗
+    document.querySelectorAll('.wx-log-cell').forEach(cell => {
+      cell.addEventListener('click', (e) => {
+        const id = e.currentTarget.getAttribute('data-wx-id');
+        if (id) this.openLapSplitsModal(id);
+      });
+    });
+
+    // 非同步批次抓取本頁活動歷史天氣並更新表格 (Task T-WX-05)
+    this._hydrateLogsWeather(paginatedLogs);
+  }
+
+  /**
+   * 非同步填充訓練日誌表格的天氣與等效涼爽配速標籤
+   */
+  async _hydrateLogsWeather(logs = []) {
+    if (!logs || logs.length === 0) return;
+    const weatherMap = await weatherService.batchGetWeatherForActivities(logs, 3);
+
+    logs.forEach(log => {
+      const cell = document.querySelector(`.wx-log-cell[data-wx-id="${log.activityId}"]`);
+      if (!cell) return;
+
+      const wx = weatherMap.get(String(log.activityId));
+      if (!wx) {
+        cell.innerHTML = `<span class="text-muted" style="font-size:0.74rem;">點擊設定 ✏️</span>`;
+        return;
+      }
+
+      const paceSec = log.paceAvgSec || parsePace(log.paceAvg);
+      const adj = calcWeatherAdjustment(paceSec, wx.tempC, wx.humidityPct);
+      const sourceMark = wx.source === 'manual' ? '✏️ ' : '';
+
+      cell.innerHTML = `
+        <div style="display:flex; flex-direction:column; line-height:1.3;">
+          <span style="font-size:0.76rem; color:${adj.stress.color}; font-weight:600;">
+            ${sourceMark}${adj.stress.icon} ${wx.tempC}°C · ${wx.humidityPct}%
+          </span>
+          <span style="font-size:0.74rem; font-family:var(--font-mono); color:${adj.penaltyPct > 0 ? 'var(--accent-cyan)' : 'var(--text-muted)'};">
+            ${adj.penaltyPct > 0 ? `等效 ${adj.coolPaceStr}` : '無熱損'}
+          </span>
+        </div>
+      `;
     });
   }
 
@@ -2057,6 +2274,24 @@ class AppController {
         </div>
       </section>
 
+      <!-- 天氣／體感配速修正模擬器 (Task T-WX-04) -->
+      <section class="card" id="vdotWeatherSimCard" style="margin-bottom: 1.75rem;">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title">
+              <span>🌡️ 天氣／體感配速修正模擬器</span>
+            </h2>
+            <small class="text-muted">模擬台灣濕熱氣候對配速的影響：支援「跑後換算等效涼爽配速」與「練前高溫降速規劃」</small>
+          </div>
+          <div class="pill-group" id="wxSimModeGroup">
+            <button type="button" class="pill-btn active" data-mode="post">跑後等效換算</button>
+            <button type="button" class="pill-btn" data-mode="pre">練前降速規劃</button>
+          </div>
+        </div>
+
+        <div id="wxSimBody"></div>
+      </section>
+
       <!-- Jack Daniels 5 大強度建議配速表 -->
       <section class="card" style="margin-bottom: 1.75rem;">
         <div class="card-header">
@@ -2135,6 +2370,169 @@ class AppController {
 
     // 渲染 Chart.js 歷史趨勢圖
     this.renderFullVdotChart(milestones);
+
+    // 初始化 VDOT 頁面天氣配速修正模擬器 (Task T-WX-04)
+    this._initVdotWeatherSimulator(predictions);
+  }
+
+  /**
+   * 初始化 VDOT 頁面獨立天氣／體感配速修正模擬器
+   */
+  _initVdotWeatherSimulator(predictions) {
+    const bodyEl = document.getElementById('wxSimBody');
+    const modeGroup = document.getElementById('wxSimModeGroup');
+    if (!bodyEl || !modeGroup) return;
+
+    const ePace = predictions?.trainingPaces?.find(p => p.zone.includes('E'));
+    let simMode = 'post'; // 'post' | 'pre'
+    let paceStr = ePace ? ePace.paceStr.replace(/\/km.*/, '').split('–')[0].trim() : '6:30';
+    let tempC = 30.0;
+    let humidityPct = 80;
+
+    const presets = [
+      { label: '🍃 涼爽冬晨 (15°C / 70%)', t: 15, h: 70 },
+      { label: '🌤️ 春秋微暖 (22°C / 75%)', t: 22, h: 75 },
+      { label: '☀️ 台灣夏夜 (29°C / 85%)', t: 29, h: 85 },
+      { label: '🔥 盛夏午後 (34°C / 80%)', t: 34, h: 80 }
+    ];
+
+    const renderSim = () => {
+      const paceSec = parsePace(paceStr);
+      const adj = calcWeatherAdjustment(paceSec, tempC, humidityPct);
+      const isPost = simMode === 'post';
+      const resultPace = isPost ? adj.coolPaceStr : adj.hotTargetPaceStr;
+      const resultLabel = isPost ? '等效 15°C 涼爽配速' : '建議實際執行配速 (降速保護)';
+      const deltaNote = adj.penaltyPct > 0
+        ? (isPost ? `比實跑快 ${adj.savedSecPerKm} 秒/km` : `比標準配速放慢 +${adj.penaltyPct}%`)
+        : '氣候舒適，照標準配速跑即可';
+
+      bodyEl.innerHTML = `
+        <div style="display:flex; flex-wrap:wrap; gap:0.45rem; margin-bottom:1rem;">
+          ${presets.map((p, idx) => `
+            <button type="button" class="btn btn-outline btn-sm wx-sim-preset" data-idx="${idx}" style="font-size:0.76rem; padding:0.28rem 0.6rem;">
+              ${p.label}
+            </button>
+          `).join('')}
+        </div>
+
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:1rem; align-items:end; margin-bottom:1.1rem;">
+          <div>
+            <label for="wxSimPaceInput" style="display:block; font-size:0.8rem; color:var(--text-secondary); margin-bottom:0.35rem;">
+              ${isPost ? '⏱️ 實跑平均配速 (MM:SS)' : '🎯 課表目標配速 (MM:SS)'}
+            </label>
+            <input type="text" id="wxSimPaceInput" class="form-control" value="${paceStr}" placeholder="例如 6:30" style="font-family:var(--font-mono); font-weight:700;">
+          </div>
+
+          <div>
+            <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:0.35rem;">
+              <label for="wxSimTempRange" style="color:var(--text-secondary);">🌡️ 氣溫 (°C)</label>
+              <strong id="wxSimTempVal" style="color:var(--accent-orange); font-family:var(--font-mono);">${tempC.toFixed(1)} °C</strong>
+            </div>
+            <input type="range" id="wxSimTempRange" min="5" max="40" step="0.5" value="${tempC}" style="width:100%; accent-color:var(--accent-orange); cursor:pointer;">
+          </div>
+
+          <div>
+            <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:0.35rem;">
+              <label for="wxSimHumRange" style="color:var(--text-secondary);">💧 相對濕度 (%)</label>
+              <strong id="wxSimHumVal" style="color:var(--accent-cyan); font-family:var(--font-mono);">${humidityPct} %</strong>
+            </div>
+            <input type="range" id="wxSimHumRange" min="25" max="100" step="1" value="${humidityPct}" style="width:100%; accent-color:var(--accent-cyan); cursor:pointer;">
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(175px, 1fr)); gap:0.85rem; background:rgba(15,23,42,0.55); border:1px solid var(--border-color); border-radius:12px; padding:1rem;">
+          <div>
+            <div style="font-size:0.75rem; color:var(--text-muted);">${resultLabel}</div>
+            <div id="wxSimResultPace" style="font-size:1.55rem; font-weight:800; font-family:var(--font-mono); color:var(--accent-cyan);">${resultPace}</div>
+            <div id="wxSimDeltaNote" style="font-size:0.75rem; color:var(--accent-lime);">${deltaNote}</div>
+          </div>
+          <div>
+            <div style="font-size:0.75rem; color:var(--text-muted);">體感熱壓力等級</div>
+            <div id="wxSimStressBadge" style="font-size:1.1rem; font-weight:700; color:${adj.stress.color}; margin:0.2rem 0;">
+              ${adj.stress.icon} ${adj.stress.label}
+            </div>
+            <div id="wxSimDewPoint" style="font-size:0.75rem; color:var(--text-muted);">露點溫度 ${adj.dewPointC}°C &bull; 掉速係數 +${adj.penaltyPct}%</div>
+          </div>
+          <div style="display:flex; align-items:center; font-size:0.8rem; color:var(--text-secondary); line-height:1.5;">
+            <span id="wxSimAdvice">💡 ${adj.stress.advice}</span>
+          </div>
+        </div>
+      `;
+
+      const paceInput = document.getElementById('wxSimPaceInput');
+      const tempRange = document.getElementById('wxSimTempRange');
+      const humRange = document.getElementById('wxSimHumRange');
+
+      const updateNumbersOnly = () => {
+        const pSec = parsePace(paceStr);
+        const a = calcWeatherAdjustment(pSec, tempC, humidityPct);
+        const post = simMode === 'post';
+        const resEl = document.getElementById('wxSimResultPace');
+        const noteEl = document.getElementById('wxSimDeltaNote');
+        const stressEl = document.getElementById('wxSimStressBadge');
+        const dewEl = document.getElementById('wxSimDewPoint');
+        const adviceEl = document.getElementById('wxSimAdvice');
+        const tVal = document.getElementById('wxSimTempVal');
+        const hVal = document.getElementById('wxSimHumVal');
+
+        if (tVal) tVal.textContent = `${tempC.toFixed(1)} °C`;
+        if (hVal) hVal.textContent = `${humidityPct} %`;
+        if (resEl) resEl.textContent = post ? a.coolPaceStr : a.hotTargetPaceStr;
+        if (noteEl) {
+          noteEl.textContent = a.penaltyPct > 0
+            ? (post ? `比實跑快 ${a.savedSecPerKm} 秒/km` : `比標準配速放慢 +${a.penaltyPct}%`)
+            : '氣候舒適，照標準配速跑即可';
+        }
+        if (stressEl) {
+          stressEl.style.color = a.stress.color;
+          stressEl.textContent = `${a.stress.icon} ${a.stress.label}`;
+        }
+        if (dewEl) dewEl.textContent = `露點溫度 ${a.dewPointC}°C • 掉速係數 +${a.penaltyPct}%`;
+        if (adviceEl) adviceEl.textContent = `💡 ${a.stress.advice}`;
+      };
+
+      if (paceInput) {
+        paceInput.addEventListener('input', (e) => {
+          paceStr = e.target.value;
+          updateNumbersOnly();
+        });
+      }
+      if (tempRange) {
+        tempRange.addEventListener('input', (e) => {
+          tempC = parseFloat(e.target.value);
+          updateNumbersOnly();
+        });
+      }
+      if (humRange) {
+        humRange.addEventListener('input', (e) => {
+          humidityPct = parseInt(e.target.value, 10);
+          updateNumbersOnly();
+        });
+      }
+
+      document.querySelectorAll('.wx-sim-preset').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const p = presets[parseInt(e.currentTarget.getAttribute('data-idx'), 10)];
+          if (!p) return;
+          tempC = p.t;
+          humidityPct = p.h;
+          renderSim();
+        });
+      });
+    };
+
+    modeGroup.querySelectorAll('.pill-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const mode = e.currentTarget.getAttribute('data-mode');
+        if (!mode || mode === simMode) return;
+        simMode = mode;
+        modeGroup.querySelectorAll('.pill-btn').forEach(b => b.classList.remove('active'));
+        e.currentTarget.classList.add('active');
+        renderSim();
+      });
+    });
+
+    renderSim();
   }
 
   /**

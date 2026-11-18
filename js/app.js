@@ -1212,42 +1212,6 @@ class AppController {
         `;
       })()}
 
-      <!-- Strava 風格：本月 vs 上月累積跑量對比 (桃紅線 vs 深灰線) -->
-      ${(() => {
-        const comp = calculateMonthlyCumulativeComparison(logs, new Date());
-        const isAhead = comp.deltaSameDayKm >= 0;
-        const deltaSign = isAhead ? '+' : '';
-        return `
-          <section class="card" style="margin-bottom: 1.5rem;">
-            <div class="card-header">
-              <div>
-                <h2 class="card-title">📈 本月 vs 上月累積跑量對比 (${comp.currMonthLabel} vs ${comp.prevMonthLabel})</h2>
-                <small class="text-muted">桃紅線為本月截至今日（${comp.todayDay}日）累積進度，深灰線為上個月全月累積基準</small>
-              </div>
-              <div style="display:flex; gap:1rem; align-items:center; flex-wrap:wrap;">
-                <div style="text-align:right;">
-                  <div style="font-size:0.72rem; color:var(--text-muted);">本月累積 (${comp.todayDay}日止)</div>
-                  <div style="font-size:1.15rem; font-weight:800; font-family:var(--font-mono); color:#ec4899;">${comp.currToDateKm} km</div>
-                </div>
-                <div style="text-align:right;">
-                  <div style="font-size:0.72rem; color:var(--text-muted);">較上月同期 (${comp.prevSameDayKm} km)</div>
-                  <div style="font-size:1.05rem; font-weight:700; font-family:var(--font-mono); color:${isAhead ? 'var(--accent-lime)' : 'var(--accent-orange)'};">
-                    ${deltaSign}${comp.deltaSameDayKm} km ${isAhead ? '▲ 領先' : '▼ 落後'}
-                  </div>
-                </div>
-                <div style="text-align:right;">
-                  <div style="font-size:0.72rem; color:var(--text-muted);">上月全月總計</div>
-                  <div style="font-size:1.05rem; font-weight:700; font-family:var(--font-mono); color:#94a3b8;">${comp.prevFullMonthKm} km</div>
-                </div>
-              </div>
-            </div>
-            <div class="chart-container-box" style="height: 240px;">
-              <canvas id="dashMonthlyCompCanvas"></canvas>
-            </div>
-          </section>
-        `;
-      })()}
-
       <!-- Task T-EXT-03: 首頁五大心率/配速區間速查基準卡 (Zone Benchmark Cards) -->
       <section class="benchmark-bar-section">
         <div class="benchmark-bar-header">
@@ -1372,6 +1336,42 @@ class AppController {
           </div>
         </div>
       </section>
+
+      <!-- Strava 風格：本月 vs 上月累積跑量對比 (桃紅線 vs 深灰線) -->
+      ${(() => {
+        const comp = calculateMonthlyCumulativeComparison(logs, new Date());
+        const isAhead = comp.deltaSameDayKm >= 0;
+        const deltaSign = isAhead ? '+' : '';
+        return `
+          <section class="card" style="margin-bottom: 1.5rem;">
+            <div class="card-header">
+              <div>
+                <h2 class="card-title">📈 本月 vs 上月累積跑量對比 (${comp.currMonthLabel} vs ${comp.prevMonthLabel})</h2>
+                <small class="text-muted">桃紅線為本月截至今日（${comp.todayDay}日）累積進度，深灰線為上個月全月累積基準</small>
+              </div>
+              <div style="display:flex; gap:1rem; align-items:center; flex-wrap:wrap;">
+                <div style="text-align:right;">
+                  <div style="font-size:0.72rem; color:var(--text-muted);">本月累積 (${comp.todayDay}日止)</div>
+                  <div style="font-size:1.15rem; font-weight:800; font-family:var(--font-mono); color:#ec4899;">${comp.currToDateKm} km</div>
+                </div>
+                <div style="text-align:right;">
+                  <div style="font-size:0.72rem; color:var(--text-muted);">較上月同期 (${comp.prevSameDayKm} km)</div>
+                  <div style="font-size:1.05rem; font-weight:700; font-family:var(--font-mono); color:${isAhead ? 'var(--accent-lime)' : 'var(--accent-orange)'};">
+                    ${deltaSign}${comp.deltaSameDayKm} km ${isAhead ? '▲ 領先' : '▼ 落後'}
+                  </div>
+                </div>
+                <div style="text-align:right;">
+                  <div style="font-size:0.72rem; color:var(--text-muted);">上月全月總計</div>
+                  <div style="font-size:1.05rem; font-weight:700; font-family:var(--font-mono); color:#94a3b8;">${comp.prevFullMonthKm} km</div>
+                </div>
+              </div>
+            </div>
+            <div class="chart-container-box" style="height: 240px;">
+              <canvas id="dashMonthlyCompCanvas"></canvas>
+            </div>
+          </section>
+        `;
+      })()}
 
       <!-- 圖表區塊佔位 (銜接 T-08 & T-09) -->
       <div class="grid-charts-2col">

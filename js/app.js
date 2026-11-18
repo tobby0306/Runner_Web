@@ -37,8 +37,9 @@ import {
 import {
   aggregateWeeklyVolume,
   calculateWorkoutTypeBreakdown,
+  calculateMonthlyCumulativeComparison,
   WORKOUT_TYPE_CONFIG
-} from './utils/weeklyVolumeCalc.js';
+} from './utils/weeklyVolumeCalc.js?v=2.2.3';
 import {
   filterScheduleByScope,
   evaluateScheduleItem,
@@ -57,6 +58,7 @@ class AppController {
     this.weeklyRange = '12weeks'; // '8weeks' | '12weeks' | '2026' | 'all'
     this.scheduleScope = 'current_and_next'; // 'current_and_next' | 'current_month' | 'next_month' | 'all'
     this.dashWeeklyChartInstance = null;
+    this.dashMonthlyCompChartInstance = null;
     this.modalSplitsChartInstance = null;
     this.dashVdotChartInstance = null;
     this.fullVdotChartInstance = null;
@@ -1210,6 +1212,42 @@ class AppController {
         `;
       })()}
 
+      <!-- Strava 風格：本月 vs 上月累積跑量對比 (桃紅線 vs 深灰線) -->
+      ${(() => {
+        const comp = calculateMonthlyCumulativeComparison(logs, new Date());
+        const isAhead = comp.deltaSameDayKm >= 0;
+        const deltaSign = isAhead ? '+' : '';
+        return `
+          <section class="card" style="margin-bottom: 1.5rem;">
+            <div class="card-header">
+              <div>
+                <h2 class="card-title">📈 本月 vs 上月累積跑量對比 (${comp.currMonthLabel} vs ${comp.prevMonthLabel})</h2>
+                <small class="text-muted">桃紅線為本月截至今日（${comp.todayDay}日）累積進度，深灰線為上個月全月累積基準</small>
+              </div>
+              <div style="display:flex; gap:1rem; align-items:center; flex-wrap:wrap;">
+                <div style="text-align:right;">
+                  <div style="font-size:0.72rem; color:var(--text-muted);">本月累積 (${comp.todayDay}日止)</div>
+                  <div style="font-size:1.15rem; font-weight:800; font-family:var(--font-mono); color:#ec4899;">${comp.currToDateKm} km</div>
+                </div>
+                <div style="text-align:right;">
+                  <div style="font-size:0.72rem; color:var(--text-muted);">較上月同期 (${comp.prevSameDayKm} km)</div>
+                  <div style="font-size:1.05rem; font-weight:700; font-family:var(--font-mono); color:${isAhead ? 'var(--accent-lime)' : 'var(--accent-orange)'};">
+                    ${deltaSign}${comp.deltaSameDayKm} km ${isAhead ? '▲ 領先' : '▼ 落後'}
+                  </div>
+                </div>
+                <div style="text-align:right;">
+                  <div style="font-size:0.72rem; color:var(--text-muted);">上月全月總計</div>
+                  <div style="font-size:1.05rem; font-weight:700; font-family:var(--font-mono); color:#94a3b8;">${comp.prevFullMonthKm} km</div>
+                </div>
+              </div>
+            </div>
+            <div class="chart-container-box" style="height: 240px;">
+              <canvas id="dashMonthlyCompCanvas"></canvas>
+            </div>
+          </section>
+        `;
+      })()}
+
       <!-- Task T-EXT-03: 首頁五大心率/配速區間速查基準卡 (Zone Benchmark Cards) -->
       <section class="benchmark-bar-section">
         <div class="benchmark-bar-header">
@@ -1376,6 +1414,10 @@ class AppController {
     `;
 
     this.dom.pageContent.innerHTML = html;
+
+    // 繪製本月 vs 上月累積跑量對比圖
+    const monthlyComp = calculateMonthlyCumulativeComparison(logs, new Date());
+    this.renderDashMonthlyCompChart(monthlyComp);
 
     // 繪製 Task T-10: 週訓練量推移堆疊柱狀圖與時數線
     this.renderDashWeeklyChart(weeklyData);
@@ -3155,6 +3197,93 @@ class AppController {
         `).join('')}
       `;
     }
+  }
+
+  /**
+   * 繪製儀表板「本月 vs 上月」累積跑量對比折線圖 (Strava 風格：桃紅線 vs 深灰線)
+   * @param {object} comp
+   */
+  renderDashMonthlyCompChart(comp) {
+    const canvas = document.getElementById('dashMonthlyCompCanvas');
+    if (!canvas || !window.Chart || !comp) return;
+
+    if (this.dashMonthlyCompChartInstance) {
+      this.dashMonthlyCompChartInstance.destroy();
+      this.dashMonthlyCompChartInstance = null;
+    }
+
+    const ctx = canvas.getContext('2d');
+    this.dashMonthlyCompChartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: comp.labels,
+        datasets: [
+          {
+            label: `本月 (${comp.currMonthLabel})`,
+            data: comp.currCumulative,
+            borderColor: '#ec4899',
+            backgroundColor: (context) => {
+              const { ctx: c, chartArea } = context.chart;
+              if (!chartArea) return 'rgba(236, 72, 153, 0.15)';
+              const grad = c.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+              grad.addColorStop(0, 'rgba(236, 72, 153, 0.30)');
+              grad.addColorStop(1, 'rgba(236, 72, 153, 0.0)');
+              return grad;
+            },
+            borderWidth: 3,
+            fill: true,
+            tension: 0.2,
+            spanGaps: false,
+            pointRadius: (context) => (context.dataIndex === comp.todayDay - 1 ? 5 : 0),
+            pointHoverRadius: 5,
+            pointBackgroundColor: '#ec4899',
+            pointBorderColor: '#ffffff',
+            pointBorderWidth: 1.5
+          },
+          {
+            label: `上月 (${comp.prevMonthLabel})`,
+            data: comp.prevCumulative,
+            borderColor: '#94a3b8',
+            backgroundColor: 'rgba(148, 163, 184, 0.08)',
+            borderWidth: 2,
+            borderDash: [4, 3],
+            fill: true,
+            tension: 0.2,
+            pointRadius: 0,
+            pointHoverRadius: 4
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: {
+            labels: { color: '#cbd5e1', usePointStyle: true }
+          },
+          tooltip: {
+            callbacks: {
+              label: (context) => {
+                if (context.parsed.y === null) return null;
+                return `${context.dataset.label}: ${context.parsed.y} km`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: { color: '#94a3b8', maxTicksLimit: 11 },
+            grid: { color: 'rgba(148, 163, 184, 0.08)' }
+          },
+          y: {
+            beginAtZero: true,
+            ticks: { color: '#94a3b8', callback: v => `${v} km` },
+            grid: { color: 'rgba(148, 163, 184, 0.1)' }
+          }
+        }
+      }
+    });
   }
 
   /**

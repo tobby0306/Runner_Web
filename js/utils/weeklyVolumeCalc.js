@@ -394,3 +394,86 @@ export function calculateWorkoutTypeBreakdown(activities = [], year = null) {
     }
   };
 }
+
+/**
+ * 計算「本月 vs 上月」每日累積里程對比 (仿 Strava 每月累積進度折線)
+ * @param {Array<object>} activities
+ * @param {Date} [referenceDate=new Date()]
+ */
+export function calculateMonthlyCumulativeComparison(activities = [], referenceDate = new Date()) {
+  const ref = new Date(referenceDate);
+  const currYear = ref.getFullYear();
+  const currMonth = ref.getMonth(); // 0-11
+  const todayDay = ref.getDate();
+
+  const prevRef = new Date(currYear, currMonth - 1, 1);
+  const prevYear = prevRef.getFullYear();
+  const prevMonth = prevRef.getMonth();
+
+  const daysInCurr = new Date(currYear, currMonth + 1, 0).getDate();
+  const daysInPrev = new Date(prevYear, prevMonth + 1, 0).getDate();
+  const maxDays = Math.max(daysInCurr, daysInPrev);
+
+  const currDaily = new Array(daysInCurr + 1).fill(0);
+  const prevDaily = new Array(daysInPrev + 1).fill(0);
+
+  (activities || []).forEach(a => {
+    const rawDate = a.activityDate || a.activityDateRaw;
+    if (!rawDate) return;
+    const d = new Date(rawDate);
+    if (isNaN(d.getTime())) return;
+    const km = a.distanceKm || 0;
+    if (km <= 0) return;
+
+    const y = d.getFullYear();
+    const m = d.getMonth();
+    const day = d.getDate();
+
+    if (y === currYear && m === currMonth && day <= daysInCurr) {
+      currDaily[day] += km;
+    } else if (y === prevYear && m === prevMonth && day <= daysInPrev) {
+      prevDaily[day] += km;
+    }
+  });
+
+  const labels = [];
+  const currCumulative = [];
+  const prevCumulative = [];
+
+  let currAcc = 0;
+  let prevAcc = 0;
+
+  for (let day = 1; day <= maxDays; day++) {
+    labels.push(`${day}日`);
+
+    if (day <= daysInPrev) {
+      prevAcc += prevDaily[day];
+    }
+    prevCumulative.push(Math.round(prevAcc * 10) / 10);
+
+    if (day <= todayDay && day <= daysInCurr) {
+      currAcc += currDaily[day];
+      currCumulative.push(Math.round(currAcc * 10) / 10);
+    } else {
+      currCumulative.push(null); // 未來日期不繪製線段
+    }
+  }
+
+  const currToDateKm = Math.round(currAcc * 10) / 10;
+  const prevSameDayKm = prevCumulative[Math.min(todayDay, maxDays) - 1] || 0;
+  const prevFullMonthKm = prevCumulative[maxDays - 1] || 0;
+  const deltaSameDayKm = Math.round((currToDateKm - prevSameDayKm) * 10) / 10;
+
+  return {
+    currMonthLabel: `${currYear}/${currMonth + 1}月`,
+    prevMonthLabel: `${prevYear}/${prevMonth + 1}月`,
+    todayDay,
+    labels,
+    currCumulative,
+    prevCumulative,
+    currToDateKm,
+    prevSameDayKm,
+    prevFullMonthKm,
+    deltaSameDayKm
+  };
+}
